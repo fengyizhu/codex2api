@@ -265,8 +265,17 @@ func newStreamFlushWriter(writer io.Writer, flusher http.Flusher) *streamFlushWr
 }
 
 func appendSSEData(buf *bytes.Buffer, data []byte) {
+	appendSSEEventData(buf, "", data)
+}
+
+func appendSSEEventData(buf *bytes.Buffer, event string, data []byte) {
 	if buf == nil {
 		return
+	}
+	if event != "" {
+		buf.WriteString("event: ")
+		buf.WriteString(event)
+		buf.WriteByte('\n')
 	}
 	buf.Write(sseDataPrefix)
 	buf.Write(data)
@@ -274,18 +283,23 @@ func appendSSEData(buf *bytes.Buffer, data []byte) {
 }
 
 func writeDeferredSSEData(streamWriter *streamFlushWriter, pending *bytes.Buffer, data []byte, shouldDefer bool) (bool, error) {
+	return writeDeferredSSEEventData(streamWriter, pending, "", data, shouldDefer)
+}
+
+// writeDeferredSSEEventData preserves event names while buffering pre-token frames.
+func writeDeferredSSEEventData(streamWriter *streamFlushWriter, pending *bytes.Buffer, event string, data []byte, shouldDefer bool) (bool, error) {
 	if streamWriter == nil {
 		return false, nil
 	}
 	if shouldDefer {
-		appendSSEData(pending, data)
+		appendSSEEventData(pending, event, data)
 		if pending != nil && pending.Len() <= pendingFirstTokenFlushBytes {
 			return false, nil
 		}
 	}
 	if pending != nil && pending.Len() > 0 {
 		if !shouldDefer {
-			appendSSEData(pending, data)
+			appendSSEEventData(pending, event, data)
 		}
 		before := streamWriter.deliveredBytes()
 		if err := streamWriter.WriteBytes(pending.Bytes()); err != nil {
@@ -298,7 +312,7 @@ func writeDeferredSSEData(streamWriter *streamFlushWriter, pending *bytes.Buffer
 		return false, nil
 	}
 	before := streamWriter.deliveredBytes()
-	if err := streamWriter.WriteSSEData(data); err != nil {
+	if err := streamWriter.WriteSSEEventData(event, data); err != nil {
 		return false, err
 	}
 	return streamWriter.deliveredBytes() > before, nil
@@ -432,13 +446,23 @@ func (w *streamFlushWriter) WriteBytes(data []byte) error {
 // WriteSSEData 向流中写入一条 SSE 数据帧（带 "data: " 前缀与 "\n\n" 后缀）。
 // 契约：同一实例的 Flush/WriteBytes/WriteSSEData 等方法不得跨 goroutine 并发调用。
 func (w *streamFlushWriter) WriteSSEData(data []byte) error {
+	return w.WriteSSEEventData("", data)
+}
+
+// WriteSSEEventData writes one SSE frame and, when provided, its event field.
+func (w *streamFlushWriter) WriteSSEEventData(event string, data []byte) error {
 	if w == nil || w.writer == nil {
 		return nil
 	}
 	if w.aborted.Load() {
 		return nil
 	}
-	framed := make([]byte, 0, len(sseDataPrefix)+len(data)+len(sseDataSuffix))
+	framed := make([]byte, 0, len(event)+len(sseDataPrefix)+len(data)+len(sseDataSuffix)+8)
+	if event != "" {
+		framed = append(framed, "event: "...)
+		framed = append(framed, event...)
+		framed = append(framed, '\n')
+	}
 	framed = append(framed, sseDataPrefix...)
 	framed = append(framed, data...)
 	framed = append(framed, sseDataSuffix...)
