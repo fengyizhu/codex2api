@@ -35,6 +35,18 @@ func TestWriteSSECommentDrainsBufferFirstAndBypassesScanner(t *testing.T) {
 	}
 }
 
+func TestWriteSSEEventData(t *testing.T) {
+	var out bytes.Buffer
+	w := &streamFlushWriter{writer: &out, policy: StreamFlushPolicyImmediate}
+	if err := w.WriteSSEEventData("response.completed", []byte(`{"type":"response.completed"}`)); err != nil {
+		t.Fatalf("WriteSSEEventData: %v", err)
+	}
+	want := "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"
+	if got := out.String(); got != want {
+		t.Fatalf("SSE frame = %q, want %q", got, want)
+	}
+}
+
 func TestWriteSSECommentNilAndEmptySafe(t *testing.T) {
 	var w *streamFlushWriter
 	if err := w.WriteSSEComment(": keepalive\n\n"); err != nil {

@@ -3387,7 +3387,7 @@ func writeResponsesStreamBreakEvent(w *streamFlushWriter) error {
 		`{"type":"response.failed","response":{"created_at":%d,"status":"failed","error":{"code":"%s","message":"%s"}}}`,
 		time.Now().Unix(), ErrorCodeUpstreamStreamBreak, upstreamStreamBreakMessage,
 	))
-	if err := w.WriteSSEData(payload); err != nil {
+	if err := w.WriteSSEEventData("response.failed", payload); err != nil {
 		return err
 	}
 	return w.Flush()
@@ -4767,7 +4767,7 @@ func (h *Handler) Responses(c *gin.Context) {
 						// 首包前静默换号分支。必须写出时改写降载码为客户端可重试码。
 						shouldDefer := shouldDeferPreContentSSEEvent(eventType, contentTokenSeen, gotTerminal, preflightPassthrough) ||
 							(!contentTokenSeen && !visibleBody && !gotTerminal && isRetryableUpstreamErrorFrame(eventType, data, continuousRetryPolicy))
-						wrote, err := writeDeferredSSEData(streamWriter, &pendingFirstTokenEvents, sanitizeCapacityShedEventForClient(eventType, data), shouldDefer)
+						wrote, err := writeDeferredSSEEventData(streamWriter, &pendingFirstTokenEvents, eventType, sanitizeCapacityShedEventForClient(eventType, data), shouldDefer)
 						if err != nil {
 							writeErr = err
 							clientGone = true
@@ -5471,7 +5471,7 @@ func (h *Handler) Responses(c *gin.Context) {
 					// 进不了首包前静默换号/超窗压缩分支。必须写出时改写降载码。
 					shouldDefer := shouldDeferPreContentSSEEvent(eventType, contentTokenSeen, gotTerminal, preflightPassthrough) ||
 						(!contentTokenSeen && !visibleBody && !gotTerminal && isRetryableUpstreamErrorFrame(eventType, data, continuousRetryPolicy))
-					wrote, err := writeDeferredSSEData(streamWriter, &pendingFirstTokenEvents, sanitizeCapacityShedEventForClient(eventType, data), shouldDefer)
+					wrote, err := writeDeferredSSEEventData(streamWriter, &pendingFirstTokenEvents, eventType, sanitizeCapacityShedEventForClient(eventType, data), shouldDefer)
 					if err != nil {
 						writeErr = err
 						clientGone = true

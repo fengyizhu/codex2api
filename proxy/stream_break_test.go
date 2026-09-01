@@ -28,10 +28,10 @@ func TestWriteResponsesStreamBreakEvent(t *testing.T) {
 	}
 
 	body := recorder.Body.String()
-	if !strings.HasPrefix(body, "data: ") || !strings.HasSuffix(body, "\n\n") {
+	if !strings.HasPrefix(body, "event: response.failed\ndata: ") || !strings.HasSuffix(body, "\n\n") {
 		t.Fatalf("unexpected SSE frame: %q", body)
 	}
-	data := strings.TrimSuffix(strings.TrimPrefix(body, "data: "), "\n\n")
+	data := strings.TrimSuffix(strings.TrimPrefix(body, "event: response.failed\ndata: "), "\n\n")
 	if !gjson.Valid(data) {
 		t.Fatalf("stream break event is not valid JSON: %q", data)
 	}
