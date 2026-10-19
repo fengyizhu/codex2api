@@ -121,6 +121,106 @@ func TestAntigravityAuthorizationURLIncludesPKCEAndOfflineAccess(t *testing.T) {
 	}
 }
 
+func TestAntigravityEnterpriseAuthorizationURLMatchesBusinessFlow(t *testing.T) {
+	t.Setenv(antigravityOAuthClientsEnv, "enterprise|test-enterprise-client-id|test-enterprise-client-secret")
+	resetConfiguredAntigravityOAuth(t)
+	client := newAntigravityClient(http.DefaultClient, AntigravityEndpoints{})
+	enterpriseClient, err := client.resolveOAuthClientForMode("", AntigravityOAuthModeEnterprise)
+	if err != nil {
+		t.Fatalf("resolve enterprise OAuth client: %v", err)
+	}
+	if enterpriseClient.ClientSecret != "test-enterprise-client-secret" {
+		t.Fatalf("enterprise client secret was not configured")
+	}
+	gotURL, info, err := client.BuildOAuthAuthorizationURLWithMode(
+		"http://localhost:63238/auth/callback", "state-enterprise", "challenge-enterprise", "", AntigravityOAuthModeEnterprise,
+	)
+	if err != nil {
+		t.Fatalf("BuildOAuthAuthorizationURLWithMode() error: %v", err)
+	}
+	if info.Key != AntigravityEnterpriseOAuthClientKey || info.ClientID != "test-enterprise-client-id" {
+		t.Fatalf("client info = %+v", info)
+	}
+	parsed, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "accounts.google.com" || parsed.Path != "/o/oauth2/auth" {
+		t.Fatalf("authorization endpoint = %s", parsed)
+	}
+	query := parsed.Query()
+	checks := map[string]string{
+		"client_id":             "test-enterprise-client-id",
+		"redirect_uri":          "http://localhost:63238/auth/callback",
+		"response_type":         "code",
+		"access_type":           "offline",
+		"prompt":                "consent",
+		"state":                 "state-enterprise",
+		"code_challenge":        "challenge-enterprise",
+		"code_challenge_method": "S256",
+	}
+	for key, want := range checks {
+		if got := query.Get(key); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+	if query.Get("include_granted_scopes") != "" {
+		t.Fatalf("enterprise URL unexpectedly includes include_granted_scopes: %s", gotURL)
+	}
+	if got := query.Get("scope"); got != antigravityEnterpriseOAuthScopes {
+		t.Fatalf("scope = %q, want %q", got, antigravityEnterpriseOAuthScopes)
+	}
+}
+
+func TestAntigravityEnterpriseOAuthRequiresConfiguredClient(t *testing.T) {
+	t.Setenv(antigravityOAuthClientsEnv, "")
+	resetConfiguredAntigravityOAuth(t)
+	client := newAntigravityClient(http.DefaultClient, AntigravityEndpoints{})
+	if _, _, err := client.BuildOAuthAuthorizationURLWithMode(
+		"http://localhost:63238/auth/callback", "state", "challenge", "", AntigravityOAuthModeEnterprise,
+	); err == nil || !strings.Contains(err.Error(), antigravityOAuthClientsEnv) {
+		t.Fatalf("missing enterprise client configuration error = %v", err)
+	}
+	if _, err := client.ExchangeOAuthAuthorizationCodeWithMode(
+		context.Background(), "code", "http://localhost:63238/auth/callback", "verifier", "", AntigravityOAuthModeEnterprise,
+	); err == nil || !strings.Contains(err.Error(), antigravityOAuthClientsEnv) {
+		t.Fatalf("missing enterprise exchange configuration error = %v", err)
+	}
+}
+
+func TestAntigravityEnterpriseExchangeUsesConfiguredClient(t *testing.T) {
+	t.Setenv(antigravityOAuthClientsEnv, "enterprise|test-enterprise-client-id|test-enterprise-client-secret")
+	resetConfiguredAntigravityOAuth(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for key, want := range map[string]string{
+			"client_id": "test-enterprise-client-id", "client_secret": "test-enterprise-client-secret",
+			"code_verifier": "verifier", "redirect_uri": "http://localhost:63238/auth/callback",
+		} {
+			if got := r.Form.Get(key); got != want {
+				t.Errorf("%s = %q, want %q", key, got, want)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"test-access-token","refresh_token":"test-refresh-token"}`)
+	}))
+	defer server.Close()
+	client := newAntigravityClient(server.Client(), AntigravityEndpoints{TokenURL: server.URL})
+	credential, err := client.ExchangeOAuthAuthorizationCodeWithMode(
+		context.Background(), "code", "http://localhost:63238/auth/callback", "verifier", "", AntigravityOAuthModeEnterprise,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential.OAuthClientKey != AntigravityEnterpriseOAuthClientKey || credential.ClientID != "test-enterprise-client-id" || credential.ClientSecret != "test-enterprise-client-secret" {
+		t.Fatal("enterprise credential did not preserve the configured OAuth client")
+	}
+}
+
 func TestAntigravityAuthorizationURLRejectsMalformedRedirectOrClient(t *testing.T) {
 	client := newAntigravityClient(http.DefaultClient, AntigravityEndpoints{})
 	client.oauth = []antigravityOAuthClient{{Key: "custom", ClientID: "client-id", ClientSecret: "client-secret"}}

@@ -146,6 +146,56 @@ func TestStartAntigravityOAuthCreatesStateBoundPKCESession(t *testing.T) {
 	}
 }
 
+func TestStartAntigravityOAuthEnterpriseUsesBusinessCallbackAndClient(t *testing.T) {
+	t.Setenv("ANTIGRAVITY_OAUTH_CLIENTS", "enterprise|test-enterprise-client-id|test-enterprise-client-secret")
+	t.Setenv("ANTIGRAVITY_OAUTH_CLIENT_KEY", "")
+	auth.SetConfiguredAntigravityOAuth(auth.AntigravityOAuthSettings{})
+	t.Cleanup(func() { auth.SetConfiguredAntigravityOAuth(auth.AntigravityOAuthSettings{}) })
+	gin.SetMode(gin.TestMode)
+	db := newTestAdminDB(t)
+	h := &Handler{db: db}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/admin/accounts/antigravity/oauth/start", strings.NewReader(`{"name":"oauth-enterprise","oauth_mode":"enterprise","project_id":"example-enterprise-project"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	h.StartAntigravityOAuth(ctx)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	var payload struct {
+		SessionID   string `json:"session_id"`
+		AuthURL     string `json:"auth_url"`
+		RedirectURI string `json:"redirect_uri"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	session, ok := globalAntigravityOAuthSessions.get(payload.SessionID)
+	if !ok {
+		t.Fatalf("session %q was not stored", payload.SessionID)
+	}
+	t.Cleanup(func() {
+		globalAntigravityOAuthSessions.remove(payload.SessionID)
+		closeAntigravityOAuthListener(session)
+	})
+	if session.OAuthMode != auth.AntigravityOAuthModeEnterprise || payload.RedirectURI != session.RedirectURI || !strings.Contains(payload.RedirectURI, "/auth/callback") {
+		t.Fatalf("session = %+v, redirect_uri=%q", session, payload.RedirectURI)
+	}
+	if len(session.State) != 22 {
+		t.Fatalf("enterprise state length = %d, want 22", len(session.State))
+	}
+	if session.ProjectID != "example-enterprise-project" {
+		t.Fatalf("enterprise project_id = %q", session.ProjectID)
+	}
+	authURL, err := url.Parse(payload.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authURL.Path != "/o/oauth2/auth" || authURL.Query().Get("client_id") != "test-enterprise-client-id" {
+		t.Fatalf("enterprise authorization URL = %s", payload.AuthURL)
+	}
+}
+
 func TestStartAntigravityOAuthFailsClosedWithoutUsableEgress(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := newTestAdminDB(t)

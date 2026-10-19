@@ -20,6 +20,7 @@ import type {
 import Modal from "../../components/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../utils/error";
@@ -37,9 +38,11 @@ interface OAuthDraft {
   name: string;
   proxyUrl: string;
   groupIds: number[];
+  oauthMode: "personal" | "enterprise";
+  projectId: string;
 }
 
-const EMPTY_OAUTH_DRAFT: OAuthDraft = { name: "", proxyUrl: "", groupIds: [] };
+const EMPTY_OAUTH_DRAFT: OAuthDraft = { name: "", proxyUrl: "", groupIds: [], oauthMode: "personal", projectId: "" };
 
 function StepIndicator({ step, failed }: { step: 1 | 2 | 3; failed: boolean }) {
   const { t } = useTranslation();
@@ -195,6 +198,8 @@ export default function AntigravityOAuthModal({
       const result = await api.startAntigravityOAuth({
         name: draft.name.trim() || undefined,
         proxy_url: draft.proxyUrl.trim() || undefined,
+        oauth_mode: draft.oauthMode,
+        project_id: draft.projectId.trim() || undefined,
         group_ids: draft.groupIds,
       });
       setSession(result);
@@ -225,7 +230,7 @@ export default function AntigravityOAuthModal({
     } finally {
       setStarting(false);
     }
-  }, [draft.groupIds, draft.name, draft.proxyUrl, pollStatus, showToast, stopPolling, t]);
+  }, [draft.groupIds, draft.name, draft.oauthMode, draft.projectId, draft.proxyUrl, pollStatus, showToast, stopPolling, t]);
 
   const handleComplete = useCallback(async () => {
     if (!session) return;
@@ -349,6 +354,28 @@ export default function AntigravityOAuthModal({
                 placeholder={t("antigravity.accountNamePlaceholder")}
               />
             </label>
+            <label className="block space-y-1.5">
+              <FieldLabel>{t("antigravity.oauthMode")}</FieldLabel>
+              <Select
+                value={draft.oauthMode}
+                onValueChange={(value) => setDraft((current) => ({ ...current, oauthMode: value as OAuthDraft["oauthMode"] }))}
+                options={[
+                  { value: "personal", label: t("antigravity.oauthModePersonal") },
+                  { value: "enterprise", label: t("antigravity.oauthModeEnterprise") },
+                ]}
+              />
+            </label>
+            {draft.oauthMode === "enterprise" ? (
+              <label className="block space-y-1.5">
+                <FieldLabel>{t("antigravity.oauthProjectId")}</FieldLabel>
+                <Input
+                  value={draft.projectId}
+                  onChange={(event) => setDraft((current) => ({ ...current, projectId: event.target.value }))}
+                  placeholder={t("antigravity.oauthProjectIdPlaceholder")}
+                />
+                <FieldHint>{t("antigravity.oauthProjectIdHint")}</FieldHint>
+              </label>
+            ) : null}
             <OptionalSettingsSection proxyUrl={draft.proxyUrl} groupIds={draft.groupIds} groups={groups}>
               <AccountMetadataFields
                 stacked

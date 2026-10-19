@@ -171,20 +171,21 @@ type Account struct {
 	// grokRuntimeFactsMu serializes inference-response observations for this
 	// account. The sink performs generation-fenced database writes before it
 	// publishes any hard gate or routing invalidation back to memory.
-	grokRuntimeFactsMu   sync.Mutex
-	usageObservedAt      time.Time
-	DBID                 int64 // 数据库 ID
-	RefreshToken         string
-	SessionToken         string
-	AccessToken          string
-	ExpiresAt            time.Time
-	AccountID            string
-	Email                string
-	PlanType             string
-	ProxyURL             string
-	CustomHeaders        map[string]string
-	UpstreamType         string
-	AntigravityProjectID string
+	grokRuntimeFactsMu        sync.Mutex
+	usageObservedAt           time.Time
+	DBID                      int64 // 数据库 ID
+	RefreshToken              string
+	SessionToken              string
+	AccessToken               string
+	ExpiresAt                 time.Time
+	AccountID                 string
+	Email                     string
+	PlanType                  string
+	ProxyURL                  string
+	CustomHeaders             map[string]string
+	UpstreamType              string
+	AntigravityProjectID      string
+	AntigravityOAuthClientKey string
 	// AntigravityPlanKey is the plan_allow key derived from the persisted
 	// entitlement tier ids (free/pro/ultra/standard, "api" for API keys).
 	// PlanType keeps Google's display name ("Google AI Pro") for the UI.
@@ -6224,6 +6225,7 @@ func (s *Store) buildAccountFromRow(ctx context.Context, row *database.AccountRo
 		HealthTier:                   HealthTierWarm,
 		UpstreamType:                 upstreamType,
 		AntigravityProjectID:         strings.TrimSpace(row.GetCredential("project_id")),
+		AntigravityOAuthClientKey:    strings.TrimSpace(row.GetCredential("oauth_client_key")),
 		BaseURL:                      strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		APIKey:                       strings.TrimSpace(apiKey),
 		Models:                       models,

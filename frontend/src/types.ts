@@ -1345,7 +1345,9 @@ export interface AntigravityCreateResponse extends MessageResponse {
 export interface AntigravityOAuthStartRequest {
   name?: string
   proxy_url?: string
+  oauth_mode?: 'personal' | 'enterprise'
   oauth_client_key?: string
+  project_id?: string
   group_ids?: number[]
 }
 
