@@ -515,6 +515,9 @@ func (h *Handler) processAntigravityOAuthExchange(input antigravityOAuthExchange
 		return
 	}
 	credential.ProjectID = strings.TrimSpace(input.ProjectID)
+	if input.OAuthMode == auth.AntigravityOAuthModeEnterprise {
+		credential.UserProjectID = strings.TrimSpace(input.ProjectID)
+	}
 	if strings.TrimSpace(credential.RefreshToken) == "" {
 		globalAntigravityOAuthSessions.setResult(input.ID, "failed", 0, "", "", "Google 未返回 refresh_token，请重新授权")
 		return
