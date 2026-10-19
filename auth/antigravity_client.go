@@ -625,6 +625,10 @@ func (c *AntigravityClient) ExchangeOAuthAuthorizationCodeWithMode(ctx context.C
 func (c *AntigravityClient) Sync(ctx context.Context, credential AntigravityCredential) (AntigravitySyncResult, error) {
 	credential.AccessToken = strings.TrimSpace(credential.AccessToken)
 	credential.RefreshToken = strings.TrimSpace(credential.RefreshToken)
+	if strings.TrimSpace(credential.UserProjectID) == "" &&
+		strings.EqualFold(strings.TrimSpace(credential.OAuthClientKey), AntigravityEnterpriseOAuthClientKey) {
+		credential.UserProjectID = strings.TrimSpace(credential.ProjectID)
+	}
 	if credential.AccessToken == "" && credential.RefreshToken == "" {
 		return AntigravitySyncResult{}, errors.New("Antigravity credential has no access_token or refresh_token")
 	}
@@ -684,7 +688,7 @@ func (c *AntigravityClient) Sync(ctx context.Context, credential AntigravityCred
 	if entitlementErr != nil {
 		warnings = append(warnings, antigravityEntitlementsWarning(entitlementErr))
 	}
-	if !quotaGroupsObserved {
+	if !quotaGroupsObserved && !isAntigravityEnterpriseQuotaSummaryUnavailable(credential, quotaSummaryFailure) {
 		warnings = append(warnings, antigravityActionableFailureWarning("Antigravity quota summary", quotaSummaryFailure))
 	}
 	if !aiCreditsObserved {
@@ -692,6 +696,14 @@ func (c *AntigravityClient) Sync(ctx context.Context, credential AntigravityCred
 	}
 	result.Warning = strings.Join(warnings, "; ")
 	return result, nil
+}
+
+func isAntigravityEnterpriseQuotaSummaryUnavailable(credential AntigravityCredential, failure antigravityUpstreamFailure) bool {
+	if !strings.EqualFold(strings.TrimSpace(credential.OAuthClientKey), AntigravityEnterpriseOAuthClientKey) {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(failure.Message))
+	return strings.Contains(message, "valid license of this product") || strings.Contains(message, "#3501")
 }
 
 func (c *AntigravityClient) fetchIdentityContext(ctx context.Context, credential *AntigravityCredential, preserveProject bool) (AntigravityProfile, AntigravityEntitlements, error, error) {

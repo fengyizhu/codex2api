@@ -11997,6 +11997,9 @@ func antigravityRefreshCredentialUpdates(row *database.AccountRow, result Antigr
 		antigravityPermanentRefreshErrorCredentialKey: "",
 		"antigravity_last_sync_attempt_at":            time.Now().UTC().Format(time.RFC3339),
 	}
+	if strings.TrimSpace(credential.UserProjectID) != "" {
+		updates[AntigravityUserProjectIDCredentialKey] = strings.TrimSpace(credential.UserProjectID)
+	}
 	if credential.ExpiresAt.IsZero() {
 		updates["expires_at"] = ""
 	} else {

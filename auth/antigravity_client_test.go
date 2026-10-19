@@ -997,6 +997,33 @@ func TestAntigravityClientEnterpriseOnboardUsesUserProject(t *testing.T) {
 	}
 }
 
+func TestAntigravityEnterpriseSyncMigratesLegacyProject(t *testing.T) {
+	var loads, onboards []map[string]any
+	server := enterpriseOnboardServer(t, enterpriseLoadBody, &loads, &onboards)
+	defer server.Close()
+	client := newAntigravityClient(server.Client(), AntigravityEndpoints{
+		UserInfoURL: server.URL + "/userinfo", LoadProject: []string{server.URL + "/load"},
+		Quota: []string{server.URL + "/quota"}, QuotaSummary: []string{server.URL + "/summary"},
+		AICredits: []string{server.URL + "/credits"}, OnboardUser: []string{server.URL + "/onboard"},
+	})
+	credential := AntigravityCredential{AccessToken: "access-token", ProjectID: "legacy-project", OAuthClientKey: AntigravityEnterpriseOAuthClientKey}
+	result, _ := client.Sync(context.Background(), credential)
+	if result.Credential.UserProjectID != "legacy-project" {
+		t.Fatalf("migrated user project = %q, want legacy-project", result.Credential.UserProjectID)
+	}
+	if len(loads) != 1 || loads[0]["cloudaicompanionProject"] != "legacy-project" {
+		t.Fatalf("loadCodeAssist body = %#v, want legacy project", loads)
+	}
+}
+
+func TestAntigravityEnterpriseLicenseQuotaWarningIsSuppressed(t *testing.T) {
+	credential := AntigravityCredential{OAuthClientKey: AntigravityEnterpriseOAuthClientKey}
+	failure := antigravityUpstreamFailure{Message: "You do not have a valid license of this product. (#3501)"}
+	if !isAntigravityEnterpriseQuotaSummaryUnavailable(credential, failure) {
+		t.Fatal("enterprise license quota summary failure was not recognized")
+	}
+}
+
 func TestAntigravityClientOnboardedEnterpriseSkipsOnboardWithUserProject(t *testing.T) {
 	var loads, onboards []map[string]any
 	server := enterpriseOnboardServer(t, `{"currentTier":{"id":"standard-tier","userDefinedCloudaicompanionProject":true}}`, &loads, &onboards)

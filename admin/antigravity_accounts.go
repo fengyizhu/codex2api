@@ -1683,6 +1683,9 @@ func antigravityCredentialsForInsert(credential auth.AntigravityCredential, fami
 		"oauth_scope": credential.Scope, "credential_family_id": familyID,
 		"antigravity_last_sync_attempt_at": time.Now().UTC().Format(time.RFC3339),
 	}
+	if strings.TrimSpace(credential.UserProjectID) != "" {
+		credentials[auth.AntigravityUserProjectIDCredentialKey] = strings.TrimSpace(credential.UserProjectID)
+	}
 	if credential.VerifiedEmailPresent {
 		// This is an imported claim only. The canonical verified_email field is
 		// populated exclusively from live Google userinfo below.
@@ -1774,6 +1777,9 @@ func antigravityCredentialUpdates(result auth.AntigravitySyncResult, previous *d
 		"antigravity_sync_error": "", "antigravity_sync_warning": result.Warning,
 		"antigravity_last_synced_at":       result.Quota.UpdatedAt.UTC().Format(time.RFC3339),
 		"antigravity_last_sync_attempt_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	if strings.TrimSpace(result.Credential.UserProjectID) != "" {
+		updates[auth.AntigravityUserProjectIDCredentialKey] = strings.TrimSpace(result.Credential.UserProjectID)
 	}
 	if result.Credential.VerifiedEmailPresent {
 		// Preserve the imported claim separately from the live, authoritative
@@ -1979,6 +1985,10 @@ func (h *Handler) refreshAntigravityAccount(ctx context.Context, id int64) antig
 		return item
 	}
 	credential := antigravityCredentialFromRow(row)
+	if strings.TrimSpace(credential.UserProjectID) == "" &&
+		strings.EqualFold(strings.TrimSpace(credential.OAuthClientKey), auth.AntigravityEnterpriseOAuthClientKey) {
+		credential.UserProjectID = strings.TrimSpace(credential.ProjectID)
+	}
 	// Let loadCodeAssist establish the project for the refreshed principal. A
 	// project carried from the prior subject can otherwise be sent to quota
 	// after a token rotation and produce an ambiguous snapshot.
