@@ -255,6 +255,7 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 		delete(request, "model")
 		request["aicode"] = map[string]any{"experience": wireModel}
 		request["entitlement"] = map[string]any{"userTier": "gcp-ge-standard-tier"}
+		normalizeAntigravityEnterpriseToolConfig(request)
 		payload, err = json.Marshal(request)
 		if err != nil {
 			return nil, fmt.Errorf("encode enterprise Antigravity request: %w", err)
@@ -409,6 +410,26 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 		Retryable:  true,
 		HTTPStatus: http.StatusBadGateway,
 		Cause:      last,
+	}
+}
+
+func normalizeAntigravityEnterpriseToolConfig(request map[string]any) {
+	if request == nil {
+		return
+	}
+	toolConfig, ok := request["toolConfig"].(map[string]any)
+	if !ok {
+		return
+	}
+	delete(toolConfig, "includeServerSideToolInvocations")
+	functionConfig, ok := toolConfig["functionCallingConfig"].(map[string]any)
+	if !ok {
+		return
+	}
+	mode, _ := functionConfig["mode"].(string)
+	if strings.EqualFold(strings.TrimSpace(mode), "VALIDATED") {
+		functionConfig["mode"] = "AUTO"
+		delete(functionConfig, "allowedFunctionNames")
 	}
 }
 

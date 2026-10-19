@@ -22,6 +22,30 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestAntigravityEnterpriseToolConfigUsesBusinessAICompatibleFields(t *testing.T) {
+	request := map[string]any{
+		"toolConfig": map[string]any{
+			"functionCallingConfig": map[string]any{
+				"mode":                 "VALIDATED",
+				"allowedFunctionNames": []any{"lookup"},
+			},
+			"includeServerSideToolInvocations": true,
+		},
+	}
+	normalizeAntigravityEnterpriseToolConfig(request)
+	toolConfig := request["toolConfig"].(map[string]any)
+	if _, ok := toolConfig["includeServerSideToolInvocations"]; ok {
+		t.Fatal("enterprise tool config retained unsupported server-side invocation field")
+	}
+	functionConfig := toolConfig["functionCallingConfig"].(map[string]any)
+	if functionConfig["mode"] != "AUTO" {
+		t.Fatalf("enterprise function calling mode = %#v, want AUTO", functionConfig["mode"])
+	}
+	if _, ok := functionConfig["allowedFunctionNames"]; ok {
+		t.Fatal("enterprise AUTO config retained allowedFunctionNames")
+	}
+}
+
 func TestAntigravityResponsesReasoningEffortMapsToSafeThinkingBudget(t *testing.T) {
 	for _, test := range []struct {
 		effort string
