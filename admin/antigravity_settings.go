@@ -20,6 +20,8 @@ type antigravitySettingsResponse struct {
 	ModelRedirects          map[string]string                 `json:"model_redirects"`
 	RedirectOverridesEffort bool                              `json:"redirect_overrides_effort"`
 	ExposeThoughts          bool                              `json:"expose_thoughts"`
+	UserAgent               string                            `json:"user_agent"`
+	APIClient               string                            `json:"api_client"`
 	Choices                 []proxy.AntigravityRedirectChoice `json:"choices"`
 }
 
@@ -32,6 +34,8 @@ func buildAntigravitySettingsResponse(settings auth.AntigravitySettings) antigra
 		ModelRedirects:          redirects,
 		RedirectOverridesEffort: settings.RedirectOverridesEffort,
 		ExposeThoughts:          settings.ExposeThoughts,
+		UserAgent:               settings.UserAgent,
+		APIClient:               settings.APIClient,
 		Choices:                 proxy.AntigravityRedirectChoices(),
 	}
 }
@@ -51,13 +55,15 @@ func (h *Handler) UpdateAntigravitySettings(c *gin.Context) {
 		ModelRedirects          *map[string]string `json:"model_redirects"`
 		RedirectOverridesEffort *bool              `json:"redirect_overrides_effort"`
 		ExposeThoughts          *bool              `json:"expose_thoughts"`
+		UserAgent               *string            `json:"user_agent"`
+		APIClient               *string            `json:"api_client"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "请求体解析失败: "+err.Error())
 		return
 	}
-	if req.ModelRedirects == nil && req.RedirectOverridesEffort == nil && req.ExposeThoughts == nil {
-		writeError(c, http.StatusBadRequest, "缺少 model_redirects、redirect_overrides_effort 或 expose_thoughts 字段")
+	if req.ModelRedirects == nil && req.RedirectOverridesEffort == nil && req.ExposeThoughts == nil && req.UserAgent == nil && req.APIClient == nil {
+		writeError(c, http.StatusBadRequest, "缺少 Antigravity 设置字段")
 		return
 	}
 	if h.db == nil {
@@ -73,6 +79,12 @@ func (h *Handler) UpdateAntigravitySettings(c *gin.Context) {
 	}
 	if req.ExposeThoughts != nil {
 		settings.ExposeThoughts = *req.ExposeThoughts
+	}
+	if req.UserAgent != nil {
+		settings.UserAgent = *req.UserAgent
+	}
+	if req.APIClient != nil {
+		settings.APIClient = *req.APIClient
 	}
 	normalized, err := auth.NormalizeAntigravitySettings(settings)
 	if err != nil {
@@ -93,6 +105,6 @@ func (h *Handler) UpdateAntigravitySettings(c *gin.Context) {
 		return
 	}
 	auth.SetConfiguredAntigravitySettings(normalized)
-	log.Printf("设置已更新: antigravity_config redirects=%d overrides_effort=%v expose_thoughts=%v", len(normalized.ModelRedirects), normalized.RedirectOverridesEffort, normalized.ExposeThoughts)
+	log.Printf("设置已更新: antigravity_config redirects=%d overrides_effort=%v expose_thoughts=%v user_agent=%t api_client=%t", len(normalized.ModelRedirects), normalized.RedirectOverridesEffort, normalized.ExposeThoughts, normalized.UserAgent != "", normalized.APIClient != "")
 	c.JSON(http.StatusOK, buildAntigravitySettingsResponse(normalized))
 }

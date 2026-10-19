@@ -14,6 +14,7 @@ import (
 
 // AntigravityModelRedirectMaxEntries 限制重定向条目数，避免无界 JSON。
 const AntigravityModelRedirectMaxEntries = 64
+const AntigravityIdentityFieldMaxLen = 256
 
 // AntigravitySettings 是 antigravity_config 列的 JSON 形态。
 type AntigravitySettings struct {
@@ -24,7 +25,9 @@ type AntigravitySettings struct {
 	RedirectOverridesEffort bool `json:"redirect_overrides_effort,omitempty"`
 	// ExposeThoughts 为 true 时，OAuth 账号的 Gemini 请求带 includeThoughts，并把
 	// 上游 thought 片段作为 reasoning 输出下发；默认关闭，保持只下发正文。
-	ExposeThoughts bool `json:"expose_thoughts,omitempty"`
+	ExposeThoughts bool   `json:"expose_thoughts,omitempty"`
+	UserAgent      string `json:"user_agent,omitempty"`
+	APIClient      string `json:"api_client,omitempty"`
 }
 
 var configuredAntigravitySettings atomic.Value // AntigravitySettings
@@ -37,7 +40,7 @@ func SetConfiguredAntigravitySettings(settings AntigravitySettings) {
 // ConfiguredAntigravitySettings 返回当前生效设置的副本。
 func ConfiguredAntigravitySettings() AntigravitySettings {
 	v, _ := configuredAntigravitySettings.Load().(AntigravitySettings)
-	out := AntigravitySettings{RedirectOverridesEffort: v.RedirectOverridesEffort, ExposeThoughts: v.ExposeThoughts}
+	out := AntigravitySettings{RedirectOverridesEffort: v.RedirectOverridesEffort, ExposeThoughts: v.ExposeThoughts, UserAgent: v.UserAgent, APIClient: v.APIClient}
 	if len(v.ModelRedirects) > 0 {
 		out.ModelRedirects = make(map[string]string, len(v.ModelRedirects))
 		for key, value := range v.ModelRedirects {
@@ -88,7 +91,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts {
+	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts && normalized.UserAgent == "" && normalized.APIClient == "" {
 		return "{}", nil
 	}
 	encoded, err := json.Marshal(normalized)
@@ -103,7 +106,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 func NormalizeAntigravitySettings(settings AntigravitySettings) (AntigravitySettings, error) {
 	out := AntigravitySettings{RedirectOverridesEffort: settings.RedirectOverridesEffort, ExposeThoughts: settings.ExposeThoughts}
 	if len(settings.ModelRedirects) == 0 {
-		return out, nil
+		return normalizeAntigravityIdentitySettings(out, settings)
 	}
 	keys := make([]string, 0, len(settings.ModelRedirects))
 	for key := range settings.ModelRedirects {
@@ -122,6 +125,29 @@ func NormalizeAntigravitySettings(settings AntigravitySettings) (AntigravitySett
 		out.ModelRedirects[key] = value
 		if len(out.ModelRedirects) > AntigravityModelRedirectMaxEntries {
 			return AntigravitySettings{}, fmt.Errorf("antigravity model redirects exceed the maximum of %d entries", AntigravityModelRedirectMaxEntries)
+		}
+	}
+	return normalizeAntigravityIdentitySettings(out, settings)
+}
+
+func normalizeAntigravityIdentitySettings(out, settings AntigravitySettings) (AntigravitySettings, error) {
+	for field, value := range map[string]string{"user_agent": settings.UserAgent, "api_client": settings.APIClient} {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if len(value) > AntigravityIdentityFieldMaxLen {
+			return AntigravitySettings{}, fmt.Errorf("antigravity %s exceeds the maximum of %d characters", field, AntigravityIdentityFieldMaxLen)
+		}
+		for _, r := range value {
+			if r == '\n' || r == '\r' || r < 32 || r == 127 {
+				return AntigravitySettings{}, fmt.Errorf("antigravity %s must not contain control characters", field)
+			}
+		}
+		if field == "user_agent" {
+			out.UserAgent = value
+		} else {
+			out.APIClient = value
 		}
 	}
 	return out, nil

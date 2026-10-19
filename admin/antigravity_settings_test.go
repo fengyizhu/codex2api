@@ -64,10 +64,10 @@ func TestAntigravitySettingsRoundTrip(t *testing.T) {
 
 	// 只改思考内容开关同样保留重定向与覆盖开关。
 	payload = antigravitySettingsResponse{}
-	if err := json.Unmarshal(put(`{"expose_thoughts":true}`).Body.Bytes(), &payload); err != nil {
+	if err := json.Unmarshal(put(`{"expose_thoughts":true,"user_agent":"ua-settings","api_client":"api-settings"}`).Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.ExposeThoughts || !payload.RedirectOverridesEffort || payload.ModelRedirects["gemini-3.8-flash"] != "gemini-3.8-flash-high" {
+	if !payload.ExposeThoughts || payload.UserAgent != "ua-settings" || payload.APIClient != "api-settings" || !payload.RedirectOverridesEffort || payload.ModelRedirects["gemini-3.8-flash"] != "gemini-3.8-flash-high" {
 		t.Fatalf("expose_thoughts payload = %+v", payload)
 	}
 	if !auth.AntigravityExposeThoughts() {

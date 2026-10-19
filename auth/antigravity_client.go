@@ -26,6 +26,7 @@ const (
 	antigravityOAuthClientsEnv             = "ANTIGRAVITY_OAUTH_CLIENTS"
 	antigravityActiveOAuthClientEnv        = "ANTIGRAVITY_OAUTH_CLIENT_KEY"
 	antigravityUserAgentEnv                = "ANTIGRAVITY_USER_AGENT"
+	antigravityAPIClientEnv                = "ANTIGRAVITY_API_CLIENT"
 	antigravityResponseLimit               = 4 << 20
 
 	// 官方 Antigravity 桌面端的 Desktop OAuth client。Google 把 secret 打进安装包，
@@ -421,6 +422,8 @@ const AntigravityClientVersion = "2.23.1"
 
 const antigravityClientPlatform = "darwin/amd64"
 
+const AntigravityAPIClientVersion = "gl-node/22.21.1"
+
 // AntigravityUserAgent is shared by control-plane and generation requests so
 // Cloud Code sees one consistent client version. ANTIGRAVITY_USER_AGENT
 // overrides both.
@@ -428,7 +431,23 @@ func AntigravityUserAgent() string {
 	if userAgent := strings.TrimSpace(os.Getenv(antigravityUserAgentEnv)); userAgent != "" {
 		return userAgent
 	}
+	if userAgent := strings.TrimSpace(ConfiguredAntigravitySettings().UserAgent); userAgent != "" {
+		return userAgent
+	}
 	return "antigravity/hub/" + AntigravityClientVersion + " " + antigravityClientPlatform
+}
+
+// AntigravityAPIClientHeader identifies the official Node desktop client on
+// Google control-plane and generation requests. The environment override is
+// deployment-scoped and applies consistently to every Antigravity request.
+func AntigravityAPIClientHeader() string {
+	if value := strings.TrimSpace(os.Getenv(antigravityAPIClientEnv)); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(ConfiguredAntigravitySettings().APIClient); value != "" {
+		return value
+	}
+	return AntigravityAPIClientVersion
 }
 
 // antigravityVersionFromUserAgent extracts the version from either the
@@ -972,6 +991,7 @@ func (c *AntigravityClient) fetchProfile(ctx context.Context, accessToken string
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("X-Goog-Api-Client", AntigravityAPIClientHeader())
 	var profile AntigravityProfile
 	if err := c.doJSON(req, &profile); err != nil {
 		return AntigravityProfile{}, err
@@ -1247,6 +1267,7 @@ func (c *AntigravityClient) postJSONWithHeaders(ctx context.Context, endpoint, a
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("X-Goog-Api-Client", AntigravityAPIClientHeader())
 	for key, value := range extraHeaders {
 		req.Header.Set(key, value)
 	}

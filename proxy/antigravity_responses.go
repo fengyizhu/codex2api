@@ -286,6 +286,7 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 				req.Header.Set("Authorization", "Bearer "+bearer)
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("User-Agent", auth.AntigravityUserAgent())
+				req.Header.Set("X-Goog-Api-Client", auth.AntigravityAPIClientHeader())
 				if useUserProject {
 					req.Header.Set("x-goog-user-project", project)
 				}

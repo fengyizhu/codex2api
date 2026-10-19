@@ -1055,6 +1055,69 @@ function AntigravityThinkingCard() {
   )
 }
 
+function AntigravityIdentityCard() {
+  const { t } = useTranslation()
+  const { showToast } = useToast()
+  const [settings, setSettings] = useState<AntigravitySettingsResponse | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void api.getAntigravitySettings().then((response) => {
+      if (active) setSettings(response)
+    }).catch((error) => {
+      if (active) showToast(getErrorMessage(error), 'error')
+    })
+    return () => {
+      active = false
+    }
+  }, [showToast])
+
+  const save = useCallback(async (field: 'user_agent' | 'api_client', value: string) => {
+    if (!settings) return
+    setSaving(true)
+    try {
+      const response = await api.updateAntigravitySettings({ [field]: value.trim() })
+      setSettings(response)
+      showToast(t('settings.antigravityIdentity.saved'), 'success')
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }, [settings, showToast, t])
+
+  return (
+    <SettingsCard
+      title={t('settings.antigravityIdentity.title')}
+      description={t('settings.antigravityIdentity.description')}
+      icon={<Fingerprint className="size-4" />}
+    >
+      <div className="space-y-4">
+        <SettingField label={t('settings.antigravityIdentity.userAgent')} description={t('settings.antigravityIdentity.userAgentHint')}>
+          <Input
+            value={settings?.user_agent ?? ''}
+            placeholder="antigravity/hub/2.23.1 darwin/amd64"
+            disabled={settings === null || saving}
+            onChange={(event) => setSettings((current) => current ? { ...current, user_agent: event.target.value } : current)}
+            onBlur={(event) => void save('user_agent', event.currentTarget.value)}
+          />
+        </SettingField>
+        <SettingField label={t('settings.antigravityIdentity.apiClient')} description={t('settings.antigravityIdentity.apiClientHint')}>
+          <Input
+            value={settings?.api_client ?? ''}
+            placeholder="gl-node/22.21.1"
+            disabled={settings === null || saving}
+            onChange={(event) => setSettings((current) => current ? { ...current, api_client: event.target.value } : current)}
+            onBlur={(event) => void save('api_client', event.currentTarget.value)}
+          />
+        </SettingField>
+        <p className="text-xs text-muted-foreground">{t('settings.antigravityIdentity.envHint')}</p>
+      </div>
+    </SettingsCard>
+  )
+}
+
 function ClaudeCodeSettingsCard() {
   const { t } = useTranslation()
   const { showToast } = useToast()
@@ -5133,6 +5196,7 @@ export default function Settings() {
               <ChannelConnectivityTestCard channel="antigravity" />
               <AntigravityModelRedirectCard />
               <AntigravityThinkingCard />
+              <AntigravityIdentityCard />
               <SettingsCard
                 title={t('settings.antigravityOAuth.title')}
                 description={t('settings.antigravityOAuth.description')}

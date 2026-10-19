@@ -4733,6 +4733,16 @@
       "hint": "When enabled, thought summaries are requested from upstream (includeThoughts) and returned as reasoning output: a reasoning item on /v1/responses, reasoning_content on /v1/chat/completions, and a thinking block on /v1/messages. /v1/responses requests that set reasoning.summary to none get no thinking content. Upstream streaming responses rarely carry thought summaries; use non-streaming requests to get them reliably (non-streaming chat/messages switch to the unstreamed upstream call).",
       "saved": "Thinking output setting saved"
     },
+    "antigravityIdentity": {
+      "title": "Client identity headers",
+      "description": "Rewrite the Antigravity upstream User-Agent and X-Goog-Api-Client headers to simulate the official desktop client.",
+      "userAgent": "User-Agent",
+      "userAgentHint": "Leave empty to use antigravity/hub/2.23.1 darwin/amd64.",
+      "apiClient": "X-Goog-Api-Client",
+      "apiClientHint": "Leave empty to use gl-node/22.21.1.",
+      "envHint": "ANTIGRAVITY_USER_AGENT / ANTIGRAVITY_API_CLIENT environment variables take precedence over this setting.",
+      "saved": "Antigravity client identity settings saved"
+    },
     "channelTest": {
       "antigravityDesc": "Probe model and prompt used by default for Test Connection and batch tests on the Antigravity accounts page. Leave the model empty to pick automatically from the account catalog (newest flash low tier first).",
       "claudeDesc": "Probe model and prompt used by default for Test Connection and batch tests on the Claude accounts page. Leave the model empty to pick automatically from the account catalog (haiku first).",
