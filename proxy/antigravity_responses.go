@@ -2553,6 +2553,15 @@ func antigravityUsage(usage map[string]any) map[string]any {
 	reasoningTokens := antigravityUsageTokenCount(usage["thoughtsTokenCount"])
 	outputTokens += reasoningTokens
 	totalTokens := antigravityUsageTokenCount(usage["totalTokenCount"])
+	cachedTokens := antigravityUsageTokenCountFromKeys(usage,
+		"cachedContentTokenCount", "cached_content_token_count", "cacheReadInputTokens",
+		"cache_read_input_tokens", "cachedTokens", "cached_tokens",
+	)
+	if cachedTokens == 0 {
+		if details, ok := usage["inputTokensDetails"].(map[string]any); ok {
+			cachedTokens = antigravityUsageTokenCountFromKeys(details, "cachedTokens", "cached_tokens")
+		}
+	}
 	if minimum := inputTokens + outputTokens; totalTokens < minimum {
 		totalTokens = minimum
 	}
@@ -2561,13 +2570,22 @@ func antigravityUsage(usage map[string]any) map[string]any {
 		"output_tokens": outputTokens,
 		"total_tokens":  totalTokens,
 	}
-	if cached := usage["cachedContentTokenCount"]; cached != nil {
-		result["input_tokens_details"] = map[string]any{"cached_tokens": cached}
+	if cachedTokens > 0 {
+		result["input_tokens_details"] = map[string]any{"cached_tokens": cachedTokens}
 	}
 	if reasoningTokens > 0 {
 		result["output_tokens_details"] = map[string]any{"reasoning_tokens": reasoningTokens}
 	}
 	return result
+}
+
+func antigravityUsageTokenCountFromKeys(value map[string]any, keys ...string) int64 {
+	for _, key := range keys {
+		if count := antigravityUsageTokenCount(value[key]); count > 0 {
+			return count
+		}
+	}
+	return 0
 }
 
 func antigravityUsageTokenCount(value any) int64 {

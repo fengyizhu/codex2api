@@ -956,6 +956,25 @@ func TestAntigravityUsageCountsThinkingAsOutput(t *testing.T) {
 	}
 }
 
+func TestAntigravityUsageMapsEnterpriseCacheFieldVariants(t *testing.T) {
+	for _, field := range []string{"cachedContentTokenCount", "cacheReadInputTokens", "cache_read_input_tokens", "cachedTokens"} {
+		usage := antigravityUsage(map[string]any{
+			"promptTokenCount": float64(20), "candidatesTokenCount": float64(4), field: float64(7),
+		})
+		details, ok := usage["input_tokens_details"].(map[string]any)
+		if !ok || details["cached_tokens"] != int64(7) {
+			t.Fatalf("field %s produced usage %#v", field, usage)
+		}
+	}
+	usage := antigravityUsage(map[string]any{
+		"promptTokenCount": float64(20), "candidatesTokenCount": float64(4),
+		"inputTokensDetails": map[string]any{"cachedTokens": float64(9)},
+	})
+	if details := usage["input_tokens_details"].(map[string]any); details["cached_tokens"] != int64(9) {
+		t.Fatalf("nested cache details = %#v", details)
+	}
+}
+
 func TestAntigravityOAuthGenerationEndpointDefaultsToDailyThenProduction(t *testing.T) {
 	t.Setenv(antigravityOAuthEndpointModeEnv, "")
 	want := []string{
