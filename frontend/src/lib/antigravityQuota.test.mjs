@@ -12,6 +12,7 @@ import {
   parseModelList,
   parseRefreshTokenLines,
   quotaRemaining,
+  quotaGroupPreviewWindows,
   quotaWindowKey,
   shortQuotaGroupLabel,
   summarizeQuotaGroups,
@@ -63,6 +64,39 @@ test('legacy groups field and camelCase buckets are still read', () => {
   assert.equal(groups.length, 1)
   assert.equal(groups[0].windows[0].window, 'weekly')
   assert.equal(groups[0].windows[0].fraction, 0.5)
+})
+
+test('model buckets without time windows preview the tightest quota across all models', () => {
+  const [group] = summarizeQuotaGroups({
+    quota_groups: [{
+      display_name: 'All Models',
+      buckets: [
+        { bucket_id: 'gemini-high', display_name: 'Gemini 3.8 Flash (High)', remaining_fraction: 1 },
+        { bucket_id: 'gemini-medium', display_name: 'Gemini 3.8 Flash (Medium)', remaining_fraction: 1 },
+        { bucket_id: 'claude-opus', display_name: 'Claude Opus 5.5 (Low)', remaining_fraction: 0.25 },
+      ],
+    }],
+  })
+  assert.equal(group.windows[0].rawWindow, 'Gemini 3.8 Flash (High)')
+  assert.equal(group.windows[2].rawWindow, 'Claude Opus 5.5 (Low)')
+  const preview = quotaGroupPreviewWindows(group)
+  assert.equal(preview.length, 1)
+  assert.equal(preview[0].fraction, 0.25)
+  assert.equal(preview[0].window, 'other')
+  assert.equal(preview[0].rawWindow, '')
+  assert.equal(preview[0].resetAt, '')
+})
+
+test('timed quota previews keep the 5h and weekly windows', () => {
+  const [group] = summarizeQuotaGroups(snapshot)
+  assert.deepEqual(quotaGroupPreviewWindows(group), group.windows)
+})
+
+test('missing bucket quota remains unknown in the compact preview', () => {
+  const [group] = summarizeQuotaGroups({
+    quota_groups: [{ display_name: 'All Models', buckets: [{ bucket_id: 'model-without-quota' }] }],
+  })
+  assert.equal(quotaGroupPreviewWindows(group)[0].fraction, null)
 })
 
 test('group labels are shortened and empty names fall back to an index', () => {

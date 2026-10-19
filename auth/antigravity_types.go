@@ -92,6 +92,16 @@ func (a *Account) AntigravityAPIKey() string {
 	return strings.TrimSpace(a.APIKey)
 }
 
+func (a *Account) IsAntigravityEnterprise() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return strings.EqualFold(strings.TrimSpace(a.UpstreamType), UpstreamAntigravity) &&
+		strings.EqualFold(strings.TrimSpace(a.AntigravityOAuthClientKey), AntigravityEnterpriseOAuthClientKey)
+}
+
 // AntigravityDefaultModelIDs is the conservative raw/wire fallback catalog.
 // Public model discovery expands these backing IDs through the proxy's native
 // model projection; keeping wire IDs here preserves request admission and

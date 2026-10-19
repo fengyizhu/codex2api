@@ -35,7 +35,9 @@ type antigravityOAuthSession struct {
 	State          string
 	CodeVerifier   string
 	RedirectURI    string
+	OAuthMode      auth.AntigravityOAuthMode
 	OAuthClientKey string
+	ProjectID      string
 	ProxyURL       string
 	Name           string
 	GroupIDs       []int64
@@ -117,7 +119,9 @@ type antigravityOAuthExchangeInput struct {
 	ID             string
 	CodeVerifier   string
 	RedirectURI    string
+	OAuthMode      auth.AntigravityOAuthMode
 	OAuthClientKey string
+	ProjectID      string
 	ProxyURL       string
 	Name           string
 	GroupIDs       []int64
@@ -142,7 +146,8 @@ func (s *antigravityOAuthSessionStore) claim(id, state string) (antigravityOAuth
 	session.Status = "processing"
 	input := antigravityOAuthExchangeInput{
 		ID: session.ID, CodeVerifier: session.CodeVerifier, RedirectURI: session.RedirectURI,
-		OAuthClientKey: session.OAuthClientKey, ProxyURL: session.ProxyURL, Name: session.Name,
+		OAuthMode:      session.OAuthMode,
+		OAuthClientKey: session.OAuthClientKey, ProjectID: session.ProjectID, ProxyURL: session.ProxyURL, Name: session.Name,
 		GroupIDs: append([]int64(nil), session.GroupIDs...),
 	}
 	session.mu.Unlock()
@@ -212,7 +217,9 @@ func antigravityOAuthCodeChallenge(verifier string) string {
 type antigravityOAuthStartRequest struct {
 	Name           string          `json:"name"`
 	ProxyURL       string          `json:"proxy_url"`
+	OAuthMode      string          `json:"oauth_mode"`
 	OAuthClientKey string          `json:"oauth_client_key"`
+	ProjectID      string          `json:"project_id"`
 	GroupIDs       json.RawMessage `json:"group_ids"`
 }
 
@@ -225,6 +232,16 @@ func (h *Handler) StartAntigravityOAuth(c *gin.Context) {
 	name, err := normalizeAntigravityAccountName(req.Name)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	oauthMode, err := auth.NormalizeAntigravityOAuthMode(req.OAuthMode)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	if oauthMode == auth.AntigravityOAuthModeEnterprise && projectID == "" {
+		writeError(c, http.StatusBadRequest, "企业账号需要填写 Gemini Enterprise 的 GCP Project ID")
 		return
 	}
 	proxyURL := security.SanitizeInput(strings.TrimSpace(req.ProxyURL))
@@ -255,14 +272,22 @@ func (h *Handler) StartAntigravityOAuth(c *gin.Context) {
 		return
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d%s", port, antigravityOAuthCallbackPath)
+	redirectHost := "127.0.0.1"
+	if oauthMode == auth.AntigravityOAuthModeEnterprise {
+		redirectHost = "localhost"
+	}
+	redirectURI := fmt.Sprintf("http://%s:%d%s", redirectHost, port, auth.AntigravityOAuthCallbackPath(oauthMode))
 	sessionID, err := randomAntigravityOAuthToken(24)
 	if err != nil {
 		_ = listener.Close()
 		writeInternalError(c, err)
 		return
 	}
-	state, err := randomAntigravityOAuthToken(32)
+	stateSize := 32
+	if oauthMode == auth.AntigravityOAuthModeEnterprise {
+		stateSize = 16
+	}
+	state, err := randomAntigravityOAuthToken(stateSize)
 	if err != nil {
 		_ = listener.Close()
 		writeInternalError(c, err)
@@ -274,7 +299,7 @@ func (h *Handler) StartAntigravityOAuth(c *gin.Context) {
 		writeInternalError(c, err)
 		return
 	}
-	authURL, clientInfo, err := client.BuildOAuthAuthorizationURL(redirectURI, state, antigravityOAuthCodeChallenge(verifier), req.OAuthClientKey)
+	authURL, clientInfo, err := client.BuildOAuthAuthorizationURLWithMode(redirectURI, state, antigravityOAuthCodeChallenge(verifier), req.OAuthClientKey, oauthMode)
 	if err != nil {
 		_ = listener.Close()
 		writeError(c, http.StatusBadRequest, err.Error())
@@ -282,7 +307,8 @@ func (h *Handler) StartAntigravityOAuth(c *gin.Context) {
 	}
 	session := &antigravityOAuthSession{
 		ID: sessionID, State: state, CodeVerifier: verifier, RedirectURI: redirectURI,
-		OAuthClientKey: clientInfo.Key, ProxyURL: proxyURL, Name: name, GroupIDs: groupIDs,
+		OAuthMode:      oauthMode,
+		OAuthClientKey: clientInfo.Key, ProjectID: projectID, ProxyURL: proxyURL, Name: name, GroupIDs: groupIDs,
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(antigravityOAuthSessionTTL), Status: "waiting",
 		Listener: listener,
 	}
@@ -306,7 +332,7 @@ func (h *Handler) StartAntigravityOAuth(c *gin.Context) {
 func (h *Handler) handleAntigravityOAuthCallbackHTTP(session *antigravityOAuthSession, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	if r == nil || r.URL == nil || r.Method != http.MethodGet || r.URL.Path != antigravityOAuthCallbackPath || !antigravityOAuthHTTPHostMatches(session, r.Host) {
+	if r == nil || r.URL == nil || r.Method != http.MethodGet || r.URL.Path != auth.AntigravityOAuthCallbackPath(session.OAuthMode) || !antigravityOAuthHTTPHostMatches(session, r.Host) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -370,12 +396,12 @@ func antigravityOAuthCallbackURLMatches(session *antigravityOAuthSession, u *url
 	if err != nil || redirect == nil || redirect.User != nil || redirect.Fragment != "" || redirect.Opaque != "" {
 		return false
 	}
-	if !strings.EqualFold(redirect.Scheme, "http") || redirect.Host == "" || redirect.Path != antigravityOAuthCallbackPath || redirect.RawQuery != "" {
+	if !strings.EqualFold(redirect.Scheme, "http") || redirect.Host == "" || redirect.Path != auth.AntigravityOAuthCallbackPath(session.OAuthMode) || redirect.RawQuery != "" {
 		return false
 	}
 	return strings.EqualFold(u.Scheme, redirect.Scheme) &&
 		strings.EqualFold(u.Host, redirect.Host) &&
-		u.Path == antigravityOAuthCallbackPath &&
+		u.Path == auth.AntigravityOAuthCallbackPath(session.OAuthMode) &&
 		u.EscapedPath() == redirect.EscapedPath()
 }
 
@@ -483,11 +509,12 @@ func (h *Handler) processAntigravityOAuthExchange(input antigravityOAuthExchange
 		globalAntigravityOAuthSessions.setResult(input.ID, "failed", 0, "", "", err.Error())
 		return
 	}
-	credential, err := client.ExchangeOAuthAuthorizationCode(ctx, code, input.RedirectURI, input.CodeVerifier, input.OAuthClientKey)
+	credential, err := client.ExchangeOAuthAuthorizationCodeWithMode(ctx, code, input.RedirectURI, input.CodeVerifier, input.OAuthClientKey, input.OAuthMode)
 	if err != nil {
 		globalAntigravityOAuthSessions.setResult(input.ID, "failed", 0, "", "", err.Error())
 		return
 	}
+	credential.ProjectID = strings.TrimSpace(input.ProjectID)
 	if strings.TrimSpace(credential.RefreshToken) == "" {
 		globalAntigravityOAuthSessions.setResult(input.ID, "failed", 0, "", "", "Google 未返回 refresh_token，请重新授权")
 		return

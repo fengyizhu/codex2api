@@ -167,20 +167,21 @@ type Account struct {
 	// grokRuntimeFactsMu serializes inference-response observations for this
 	// account. The sink performs generation-fenced database writes before it
 	// publishes any hard gate or routing invalidation back to memory.
-	grokRuntimeFactsMu   sync.Mutex
-	usageObservedAt      time.Time
-	DBID                 int64 // 数据库 ID
-	RefreshToken         string
-	SessionToken         string
-	AccessToken          string
-	ExpiresAt            time.Time
-	AccountID            string
-	Email                string
-	PlanType             string
-	ProxyURL             string
-	CustomHeaders        map[string]string
-	UpstreamType         string
-	AntigravityProjectID string
+	grokRuntimeFactsMu        sync.Mutex
+	usageObservedAt           time.Time
+	DBID                      int64 // 数据库 ID
+	RefreshToken              string
+	SessionToken              string
+	AccessToken               string
+	ExpiresAt                 time.Time
+	AccountID                 string
+	Email                     string
+	PlanType                  string
+	ProxyURL                  string
+	CustomHeaders             map[string]string
+	UpstreamType              string
+	AntigravityProjectID      string
+	AntigravityOAuthClientKey string
 	// AntigravityHardBlocked is a durable runtime fence restored from Google's
 	// authoritative permission/quota snapshots or a permanent OAuth refresh
 	// failure. It is kept separate from administrative DispatchPaused so a
@@ -5628,6 +5629,7 @@ func (s *Store) buildAccountFromRow(ctx context.Context, row *database.AccountRo
 		HealthTier:                   HealthTierWarm,
 		UpstreamType:                 upstreamType,
 		AntigravityProjectID:         strings.TrimSpace(row.GetCredential("project_id")),
+		AntigravityOAuthClientKey:    strings.TrimSpace(row.GetCredential("oauth_client_key")),
 		BaseURL:                      strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		APIKey:                       strings.TrimSpace(apiKey),
 		Models:                       models,

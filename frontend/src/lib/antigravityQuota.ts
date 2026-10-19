@@ -172,7 +172,7 @@ export function summarizeQuotaGroups(quota?: AntigravityQuotaSnapshot | null): Q
     const windows = buckets
       .map((bucket, bucketIndex): QuotaWindowSummary => {
         const item = toRecord(bucket);
-        const rawWindow = firstString(item, ["window"]);
+        const rawWindow = firstString(item, ["window", "display_name", "displayName", "bucket_id", "bucketId"]);
         return {
           key: firstString(item, ["bucket_id", "bucketId"]) || `${index}-${bucketIndex}`,
           window: quotaWindowKey(rawWindow),
@@ -193,6 +193,18 @@ export function summarizeQuotaGroups(quota?: AntigravityQuotaSnapshot | null): Q
       lowest: fractions.length > 0 ? Math.min(...fractions) : null,
     };
   });
+}
+
+export function quotaGroupPreviewWindows(group: QuotaGroupSummary): QuotaWindowSummary[] {
+  const timedWindows = group.windows.filter((window) => window.window !== "other");
+  if (timedWindows.length > 0) return timedWindows.slice(0, 2);
+  return [{
+    key: `${group.key}-lowest`,
+    window: "other",
+    rawWindow: "",
+    fraction: group.lowest,
+    resetAt: "",
+  }];
 }
 
 export interface AntigravityAICredits {

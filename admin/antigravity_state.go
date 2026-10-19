@@ -124,6 +124,22 @@ func antigravityAuthKindFromRow(row *database.AccountRow) string {
 	return auth.AntigravityAuthKindOAuth
 }
 
+func antigravitySyncDiagnostic(row *database.AccountRow, message string) string {
+	message = strings.TrimSpace(message)
+	if strings.TrimSpace(row.GetCredential("project_id")) == "" {
+		return message
+	}
+	parts := strings.Split(message, ";")
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" && !strings.Contains(part, "onboardUser completed without a project id") {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, "; ")
+}
+
 func antigravityStateFromRow(row *database.AccountRow) *antigravityAccountState {
 	kind := antigravityAuthKindFromRow(row)
 	rawModels := row.GetCredentialStringSlice("models")
@@ -203,7 +219,7 @@ func antigravityStateFromRow(row *database.AccountRow) *antigravityAccountState 
 		}
 	}
 	for _, warning := range []string{row.GetCredential("antigravity_sync_error"), row.GetCredential("antigravity_sync_warning")} {
-		if warning = strings.TrimSpace(warning); warning != "" {
+		if warning = antigravitySyncDiagnostic(row, warning); warning != "" {
 			state.Warnings = append(state.Warnings, warning)
 		}
 	}

@@ -257,7 +257,7 @@ func (h *Handler) buildAccountResponse(
 		AntigravityUserProjectID:     row.GetCredential(auth.AntigravityUserProjectIDCredentialKey),
 		AntigravityQuota:             antigravityQuota,
 		AntigravityPermissions:       antigravityPermissions,
-		AntigravitySyncWarning:       row.GetCredential("antigravity_sync_warning"),
+		AntigravitySyncWarning:       antigravitySyncDiagnostic(row, row.GetCredential("antigravity_sync_warning")),
 		BaseURL:                      baseURL,
 		BalanceQueryURL:              balanceQueryURL,
 		Models:                       row.GetCredentialStringSlice("models"),

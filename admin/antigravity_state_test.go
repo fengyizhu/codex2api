@@ -83,6 +83,41 @@ func TestAntigravityStateIsSanitizedAndReadDoesNotProbe(t *testing.T) {
 	}
 }
 
+func TestAntigravityProjectWarningsMatchAccountAndStateResponses(t *testing.T) {
+	projectWarning := "Antigravity project provisioning (onboardUser) failed: onboardUser completed without a project id"
+	quotaWarning := "Antigravity quota summary is temporarily unavailable"
+	store := auth.NewStore(nil, nil, &database.SystemSettings{MaxConcurrency: 4})
+	defer store.Stop()
+	handler := &Handler{store: store}
+	for _, testCase := range []struct {
+		name      string
+		projectID string
+		warning   string
+		want      string
+	}{
+		{name: "missing project", warning: projectWarning, want: projectWarning},
+		{name: "blank project", projectID: " ", warning: projectWarning, want: projectWarning},
+		{name: "project available", projectID: "project-1", warning: projectWarning},
+		{name: "unrelated warning", projectID: "project-1", warning: quotaWarning, want: quotaWarning},
+		{name: "mixed warnings", projectID: "project-1", warning: projectWarning + "; " + quotaWarning, want: quotaWarning},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			row := &database.AccountRow{ID: 1, Status: "active", Credentials: map[string]interface{}{
+				"upstream_type": auth.UpstreamAntigravity, "project_id": testCase.projectID,
+				"antigravity_sync_warning": testCase.warning,
+			}}
+			response := handler.buildAccountResponse(row, nil, nil, nil, nil, false)
+			if response.AntigravitySyncWarning != testCase.want {
+				t.Fatalf("account warning = %q, want %q", response.AntigravitySyncWarning, testCase.want)
+			}
+			state := antigravityStateFromRow(row)
+			if got := strings.Join(state.Warnings, "; "); got != testCase.want {
+				t.Fatalf("state warnings = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestAntigravityAPIKeySyncIsLocalAndUnverified(t *testing.T) {
 	handler, db, id := newAntigravityStateTestHandler(t, map[string]any{
 		"upstream_type": auth.UpstreamAntigravity, "api_key": "api-secret", "models": []string{"gemini-3.6-flash-low"},

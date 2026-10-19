@@ -57,6 +57,7 @@ var antigravityOAuthEndpointBases = []string{
 const (
 	antigravityOAuthDailyEndpoint    = "https://daily-cloudcode-pa.googleapis.com"
 	antigravityOAuthSandboxEndpoint  = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+	antigravityEnterpriseEndpoint    = "https://businessaicode.googleapis.com"
 	antigravityOfficialBodyUserAgent = "antigravity"
 	antigravityZeroWidthSpace        = "\u200B"
 )
@@ -240,14 +241,41 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 		lastRetryableResponse = nil
 	}
 	useUserProject := antigravityUserProjectHeaderEnabled()
+	enterprise := account.IsAntigravityEnterprise()
+	if enterprise {
+		var envelope map[string]any
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			return nil, fmt.Errorf("decode enterprise Antigravity envelope: %w", err)
+		}
+		request, ok := envelope["request"].(map[string]any)
+		if !ok {
+			return nil, errors.New("enterprise Antigravity envelope has no request")
+		}
+		delete(request, "sessionId")
+		delete(request, "model")
+		request["aicode"] = map[string]any{"experience": wireModel}
+		request["entitlement"] = map[string]any{"userTier": "gcp-ge-standard-tier"}
+		payload, err = json.Marshal(request)
+		if err != nil {
+			return nil, fmt.Errorf("encode enterprise Antigravity request: %w", err)
+		}
+		useUserProject = false
+	}
 	sameEndpointBudget := &antigravitySameEndpointRetryBudget{}
 	payload = sanitizeAntigravityEnvelopeToolSchemas(payload)
 	payload = relaxAntigravityClaudeForcedToolChoice(payload)
 	publicModel := strings.TrimSpace(wireModel)
 	for headerAttempt := 0; headerAttempt < 2; headerAttempt++ {
 		retryWithoutUserProject := false
-		for _, base := range antigravityOAuthEndpointList() {
+		bases := antigravityOAuthEndpointList()
+		if enterprise {
+			bases = []string{antigravityEnterpriseEndpoint}
+		}
+		for _, base := range bases {
 			endpoint := strings.TrimRight(base, "/") + "/v1internal:" + method + query
+			if enterprise {
+				endpoint = strings.TrimRight(base, "/") + "/v1beta/projects/" + url.PathEscape(project) + "/locations/global:" + method + query
+			}
 			var resp *http.Response
 			for {
 				req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))

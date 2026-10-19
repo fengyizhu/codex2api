@@ -17,13 +17,16 @@ import (
 )
 
 const (
-	antigravityAuthorizationURL     = "https://accounts.google.com/o/oauth2/v2/auth"
-	antigravityOAuthScopes          = "openid https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs https://www.googleapis.com/auth/aicode"
-	antigravityOAuthCallbackPath    = "/oauth-callback"
-	antigravityOAuthClientsEnv      = "ANTIGRAVITY_OAUTH_CLIENTS"
-	antigravityActiveOAuthClientEnv = "ANTIGRAVITY_OAUTH_CLIENT_KEY"
-	antigravityUserAgentEnv         = "ANTIGRAVITY_USER_AGENT"
-	antigravityResponseLimit        = 4 << 20
+	antigravityAuthorizationURL            = "https://accounts.google.com/o/oauth2/v2/auth"
+	antigravityOAuthScopes                 = "openid https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs https://www.googleapis.com/auth/aicode"
+	antigravityOAuthCallbackPath           = "/oauth-callback"
+	antigravityEnterpriseAuthorizationURL  = "https://accounts.google.com/o/oauth2/auth"
+	antigravityEnterpriseOAuthScopes       = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs"
+	antigravityEnterpriseOAuthCallbackPath = "/auth/callback"
+	antigravityOAuthClientsEnv             = "ANTIGRAVITY_OAUTH_CLIENTS"
+	antigravityActiveOAuthClientEnv        = "ANTIGRAVITY_OAUTH_CLIENT_KEY"
+	antigravityUserAgentEnv                = "ANTIGRAVITY_USER_AGENT"
+	antigravityResponseLimit               = 4 << 20
 
 	// 官方 Antigravity 桌面端的 Desktop OAuth client。Google 把 secret 打进安装包，
 	// 社区（sub2api / opencode / jcode）普遍当公开凭据内置。环境变量与系统设置
@@ -31,7 +34,33 @@ const (
 	AntigravityDefaultOAuthClientKey    = "official"
 	AntigravityDefaultOAuthClientID     = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 	AntigravityDefaultOAuthClientSecret = "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"
+	AntigravityEnterpriseOAuthClientKey = "enterprise"
 )
+
+type AntigravityOAuthMode string
+
+const (
+	AntigravityOAuthModePersonal   AntigravityOAuthMode = "personal"
+	AntigravityOAuthModeEnterprise AntigravityOAuthMode = "enterprise"
+)
+
+func NormalizeAntigravityOAuthMode(mode string) (AntigravityOAuthMode, error) {
+	switch AntigravityOAuthMode(strings.ToLower(strings.TrimSpace(mode))) {
+	case "", AntigravityOAuthModePersonal:
+		return AntigravityOAuthModePersonal, nil
+	case AntigravityOAuthModeEnterprise:
+		return AntigravityOAuthModeEnterprise, nil
+	default:
+		return "", fmt.Errorf("unsupported Antigravity OAuth mode: %s", mode)
+	}
+}
+
+func AntigravityOAuthCallbackPath(mode AntigravityOAuthMode) string {
+	if mode == AntigravityOAuthModeEnterprise {
+		return antigravityEnterpriseOAuthCallbackPath
+	}
+	return antigravityOAuthCallbackPath
+}
 
 func builtinAntigravityOAuthClient() antigravityOAuthClient {
 	return antigravityOAuthClient{
@@ -388,7 +417,9 @@ func NewAntigravityClient(proxyURL string) (*AntigravityClient, error) {
 // AntigravityClientVersion is the Antigravity Hub release reported to Cloud
 // Code. The model catalog is gated by client version: older versions are
 // served a reduced catalog (e.g. without per-tier Gemini 3.7/3.8 IDs).
-const AntigravityClientVersion = "2.19.1"
+const AntigravityClientVersion = "2.23.1"
+
+const antigravityClientPlatform = "darwin/amd64"
 
 // AntigravityUserAgent is shared by control-plane and generation requests so
 // Cloud Code sees one consistent client version. ANTIGRAVITY_USER_AGENT
@@ -397,7 +428,7 @@ func AntigravityUserAgent() string {
 	if userAgent := strings.TrimSpace(os.Getenv(antigravityUserAgentEnv)); userAgent != "" {
 		return userAgent
 	}
-	return "antigravity/hub/" + AntigravityClientVersion + " windows/amd64"
+	return "antigravity/hub/" + AntigravityClientVersion + " " + antigravityClientPlatform
 }
 
 // antigravityVersionFromUserAgent extracts the version from either the
@@ -476,7 +507,26 @@ func (c *AntigravityClient) resolveOAuthClient(clientKey string) (antigravityOAu
 	return antigravityOAuthClient{}, fmt.Errorf("unknown Antigravity OAuth client key: %s", clientKey)
 }
 
+func (c *AntigravityClient) resolveOAuthClientForMode(clientKey string, mode AntigravityOAuthMode) (antigravityOAuthClient, error) {
+	if mode == AntigravityOAuthModeEnterprise && strings.TrimSpace(clientKey) == "" {
+		clientKey = AntigravityEnterpriseOAuthClientKey
+	}
+	client, err := c.resolveOAuthClient(clientKey)
+	if err != nil && mode == AntigravityOAuthModeEnterprise {
+		return antigravityOAuthClient{}, fmt.Errorf("enterprise Antigravity OAuth client is not configured; add the client in admin settings or set %s: %w", antigravityOAuthClientsEnv, err)
+	}
+	return client, err
+}
+
 func (c *AntigravityClient) BuildOAuthAuthorizationURL(redirectURI, state, codeChallenge, clientKey string) (string, AntigravityOAuthClientInfo, error) {
+	return c.BuildOAuthAuthorizationURLWithMode(redirectURI, state, codeChallenge, clientKey, AntigravityOAuthModePersonal)
+}
+
+func (c *AntigravityClient) BuildOAuthAuthorizationURLWithMode(redirectURI, state, codeChallenge, clientKey string, mode AntigravityOAuthMode) (string, AntigravityOAuthClientInfo, error) {
+	mode, err := NormalizeAntigravityOAuthMode(string(mode))
+	if err != nil {
+		return "", AntigravityOAuthClientInfo{}, err
+	}
 	redirectURI = strings.TrimSpace(redirectURI)
 	// State is an opaque CSRF nonce. Validate surrounding whitespace without
 	// normalizing the value that is sent to Google or compared by the callback
@@ -486,37 +536,53 @@ func (c *AntigravityClient) BuildOAuthAuthorizationURL(redirectURI, state, codeC
 	}
 	parsed, err := url.Parse(redirectURI)
 	if err != nil || parsed == nil || parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" || parsed.Opaque != "" ||
-		!strings.EqualFold(parsed.Scheme, "http") || parsed.Host == "" || parsed.Path != antigravityOAuthCallbackPath ||
+		!strings.EqualFold(parsed.Scheme, "http") || parsed.Host == "" || parsed.Path != AntigravityOAuthCallbackPath(mode) ||
 		(parsed.Hostname() != "127.0.0.1" && !strings.EqualFold(parsed.Hostname(), "localhost")) || parsed.Port() == "" {
 		return "", AntigravityOAuthClientInfo{}, errors.New("invalid Antigravity OAuth redirect_uri")
 	}
-	client, err := c.resolveOAuthClient(clientKey)
+	client, err := c.resolveOAuthClientForMode(clientKey, mode)
 	if err != nil {
 		return "", AntigravityOAuthClientInfo{}, err
 	}
-	params := url.Values{
-		"client_id":              {client.ClientID},
-		"redirect_uri":           {redirectURI},
-		"response_type":          {"code"},
-		"scope":                  {antigravityOAuthScopes},
-		"access_type":            {"offline"},
-		"prompt":                 {"consent"},
-		"include_granted_scopes": {"true"},
-		"state":                  {state},
-		"code_challenge":         {codeChallenge},
-		"code_challenge_method":  {"S256"},
+	authorizationURL := antigravityAuthorizationURL
+	scopes := antigravityOAuthScopes
+	if mode == AntigravityOAuthModeEnterprise {
+		authorizationURL = antigravityEnterpriseAuthorizationURL
+		scopes = antigravityEnterpriseOAuthScopes
 	}
-	return antigravityAuthorizationURL + "?" + params.Encode(), AntigravityOAuthClientInfo{Key: client.Key, ClientID: client.ClientID}, nil
+	params := url.Values{
+		"client_id":             {client.ClientID},
+		"redirect_uri":          {redirectURI},
+		"response_type":         {"code"},
+		"scope":                 {scopes},
+		"access_type":           {"offline"},
+		"prompt":                {"consent"},
+		"state":                 {state},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
+	}
+	if mode == AntigravityOAuthModePersonal {
+		params.Set("include_granted_scopes", "true")
+	}
+	return authorizationURL + "?" + params.Encode(), AntigravityOAuthClientInfo{Key: client.Key, ClientID: client.ClientID}, nil
 }
 
 func (c *AntigravityClient) ExchangeOAuthAuthorizationCode(ctx context.Context, code, redirectURI, codeVerifier, clientKey string) (AntigravityCredential, error) {
+	return c.ExchangeOAuthAuthorizationCodeWithMode(ctx, code, redirectURI, codeVerifier, clientKey, AntigravityOAuthModePersonal)
+}
+
+func (c *AntigravityClient) ExchangeOAuthAuthorizationCodeWithMode(ctx context.Context, code, redirectURI, codeVerifier, clientKey string, mode AntigravityOAuthMode) (AntigravityCredential, error) {
+	mode, err := NormalizeAntigravityOAuthMode(string(mode))
+	if err != nil {
+		return AntigravityCredential{}, err
+	}
 	code = strings.TrimSpace(code)
 	redirectURI = strings.TrimSpace(redirectURI)
 	codeVerifier = strings.TrimSpace(codeVerifier)
 	if code == "" || redirectURI == "" || codeVerifier == "" {
 		return AntigravityCredential{}, errors.New("authorization code, redirect_uri, and code_verifier are required")
 	}
-	client, err := c.resolveOAuthClient(clientKey)
+	client, err := c.resolveOAuthClientForMode(clientKey, mode)
 	if err != nil {
 		return AntigravityCredential{}, err
 	}

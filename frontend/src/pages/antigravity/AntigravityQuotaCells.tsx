@@ -12,6 +12,7 @@ import {
   lowestModelRemaining,
   modelQuotaEntries,
   quotaDisplayName,
+  quotaGroupPreviewWindows,
   quotaRemaining,
   quotaResetTime,
   quotaTextTone,
@@ -157,21 +158,23 @@ export function AntigravityQuotaCell({
           <span className="w-[68px] shrink-0 truncate text-[11px] font-medium text-foreground/80">
             {group.label}
           </span>
-          {group.windows.slice(0, 2).map((window) => {
+          {quotaGroupPreviewWindows(group).map((window) => {
             const until = window.resetAt ? formatUntil(window.resetAt) : "";
             return (
               <span
                 key={window.key}
-                className="flex min-w-0 items-center gap-1"
+                className={cn("flex min-w-0 items-center gap-1", window.window === "other" && "flex-1")}
                 title={[
-                  `${group.label} · ${labels.long(window)} ${formatPercent(window.fraction)}`,
+                  `${group.label} · ${window.window === "other" ? t("antigravity.lowestRemaining") : labels.long(window)} ${formatPercent(window.fraction)}`,
                   window.resetAt ? `${t("antigravity.resetAt", { time: formatBeijingTime(window.resetAt) })}` : "",
                 ]
                   .filter(Boolean)
                   .join("\n")}
               >
-                <span className="w-5 shrink-0 text-[10px] text-muted-foreground">{labels.short(window)}</span>
-                <QuotaBar fraction={window.fraction} className="w-11 shrink-0" />
+                <span className={cn("shrink-0 truncate text-[10px] text-muted-foreground", window.window === "other" ? "w-16" : "w-5")}>
+                  {window.window === "other" ? t("antigravity.lowestRemainingShort") : labels.short(window)}
+                </span>
+                <QuotaBar fraction={window.fraction} className={window.window === "other" ? "min-w-11 flex-1" : "w-11 shrink-0"} />
                 <span
                   className={cn(
                     "w-8 shrink-0 text-right text-[11px] font-semibold tabular-nums",
@@ -216,10 +219,10 @@ export function AntigravityQuotaOverview({ account }: { account: AccountRow }) {
       {groups.length > 0 ? (
         groups.map((group) => (
           <div key={group.key} className="space-y-1.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[12px] font-semibold text-foreground">{group.label}</span>
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <span className="shrink-0 text-[12px] font-semibold text-foreground">{group.label}</span>
               {group.description ? (
-                <span className="truncate text-[10px] text-muted-foreground" title={group.description}>
+                <span className="min-w-0 truncate text-[10px] text-muted-foreground" title={group.description}>
                   {group.description}
                 </span>
               ) : null}
@@ -228,7 +231,12 @@ export function AntigravityQuotaOverview({ account }: { account: AccountRow }) {
               const until = window.resetAt ? formatUntil(window.resetAt) : "";
               return (
                 <div key={window.key} className="flex items-center gap-2">
-                  <span className="w-12 shrink-0 text-[11px] text-muted-foreground">{labels.long(window)}</span>
+                  <span
+                    className={cn("shrink-0 truncate text-[11px] text-muted-foreground", window.window === "other" ? "w-1/3 min-w-0" : "w-12")}
+                    title={labels.long(window)}
+                  >
+                    {labels.long(window)}
+                  </span>
                   <QuotaBar fraction={window.fraction} className="min-w-0 flex-1" />
                   <span
                     className={cn(
