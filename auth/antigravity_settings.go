@@ -16,6 +16,7 @@ import (
 
 // AntigravityModelRedirectMaxEntries 限制重定向条目数，避免无界 JSON。
 const AntigravityModelRedirectMaxEntries = 64
+const AntigravityIdentityFieldMaxLen = 256
 
 // 配额自动刷新间隔的取值范围与缺省值（Spec §8.1）。
 const (
@@ -41,7 +42,9 @@ type AntigravitySettings struct {
 	RedirectOverridesEffort bool `json:"redirect_overrides_effort,omitempty"`
 	// ExposeThoughts 为 true 时，OAuth 账号的 Gemini 请求带 includeThoughts，并把
 	// 上游 thought 片段作为 reasoning 输出下发；默认关闭，保持只下发正文。
-	ExposeThoughts bool `json:"expose_thoughts,omitempty"`
+	ExposeThoughts bool   `json:"expose_thoughts,omitempty"`
+	UserAgent      string `json:"user_agent,omitempty"`
+	APIClient      string `json:"api_client,omitempty"`
 	// QuotaRefreshEnabled 控制是否派发自动配额查询（缺省 true）。关闭只停止新查询，
 	// 已生效的门禁与模型目录维护不受影响（Spec §8.3）。
 	QuotaRefreshEnabled *bool `json:"quota_refresh_enabled,omitempty"`
@@ -116,6 +119,8 @@ func (s AntigravitySettings) GetExpiryPriorityHorizonHours() int {
 // clone 深拷贝全部字段（含新增指针字段），避免调用方改写进程内已生效配置。
 func (s AntigravitySettings) clone() AntigravitySettings {
 	out := AntigravitySettings{
+		UserAgent:                   s.UserAgent,
+		APIClient:                   s.APIClient,
 		RedirectOverridesEffort:     s.RedirectOverridesEffort,
 		ExposeThoughts:              s.ExposeThoughts,
 		QuotaRefreshEnabled:         cloneOptionalBool(s.QuotaRefreshEnabled),
@@ -318,7 +323,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts &&
 		normalized.QuotaRefreshEnabled == nil && normalized.QuotaRefreshIntervalMinutes == nil &&
 		normalized.QuotaGateEnabled == nil && normalized.ExpiryPriorityEnabled == nil &&
-		normalized.ExpiryPriorityHorizonHours == nil && normalized.ConfigRevision == 0 {
+		normalized.ExpiryPriorityHorizonHours == nil && normalized.ConfigRevision == 0 && normalized.UserAgent == "" && normalized.APIClient == "" {
 		return "{}", nil
 	}
 	encoded, err := json.Marshal(normalized)
@@ -334,6 +339,27 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 func NormalizeAntigravitySettings(settings AntigravitySettings) (AntigravitySettings, error) {
 	out := settings.clone()
 	out.ModelRedirects = nil
+	out.UserAgent = ""
+	out.APIClient = ""
+	for field, value := range map[string]string{"user_agent": settings.UserAgent, "api_client": settings.APIClient} {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if len(value) > AntigravityIdentityFieldMaxLen {
+			return AntigravitySettings{}, fmt.Errorf("antigravity %s exceeds the maximum of %d characters", field, AntigravityIdentityFieldMaxLen)
+		}
+		for _, r := range value {
+			if r == '\n' || r == '\r' || r < 32 || r == 127 {
+				return AntigravitySettings{}, fmt.Errorf("antigravity %s must not contain control characters", field)
+			}
+		}
+		if field == "user_agent" {
+			out.UserAgent = value
+		} else {
+			out.APIClient = value
+		}
+	}
 	if len(settings.ModelRedirects) == 0 {
 		return out, nil
 	}

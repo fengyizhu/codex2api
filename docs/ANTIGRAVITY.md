@@ -68,6 +68,8 @@ ANTIGRAVITY_OAUTH_CLIENT_KEY='primary'
 
 Environment entries take precedence for a matching key, and the active key resolves as environment variable > admin setting > first configured entry > built-in `official`, so a deployment-level override always wins over a misconfigured database value. Keep custom credentials in the deployment secret store or the admin settings page rather than source control.
 
+Antigravity upstream requests use one consistent desktop identity by default: `User-Agent: antigravity/hub/2.23.1 darwin/amd64`, the JSON body `userAgent: antigravity`, and `X-Goog-Api-Client: gl-node/22.21.1`. Deployment-level rewrites are available through `ANTIGRAVITY_USER_AGENT` and `ANTIGRAVITY_API_CLIENT`; both apply to control-plane and generation requests.
+
 Open **Accounts → Antigravity → Google OAuth**, start authorization, and complete Google's consent flow. If the loopback callback cannot complete automatically, paste the full callback URL back into the dialog.
 
 OAuth accounts synchronize a Google subject, project, permissions, quota snapshots, and model metadata when the upstream supplies them. A 401 may trigger one OAuth token refresh/retry. This recovery is never used for API Key accounts.

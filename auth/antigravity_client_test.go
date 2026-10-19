@@ -50,6 +50,17 @@ func TestAntigravityOAuthClientsFallBackToOfficialDesktopClient(t *testing.T) {
 	}
 }
 
+func TestAntigravityAPIClientHeaderCanBeOverridden(t *testing.T) {
+	t.Setenv(antigravityAPIClientEnv, "gl-node/test-client")
+	if got := AntigravityAPIClientHeader(); got != "gl-node/test-client" {
+		t.Fatalf("API client header = %q", got)
+	}
+	t.Setenv(antigravityAPIClientEnv, "")
+	if got := AntigravityAPIClientHeader(); got != AntigravityAPIClientVersion {
+		t.Fatalf("default API client header = %q", got)
+	}
+}
+
 func TestAntigravityOAuthClientsLoadConfiguredEntriesAndDefaultToFirst(t *testing.T) {
 	t.Setenv(antigravityOAuthClientsEnv, "primary|client-id|client-secret;backup|backup-id|backup-secret")
 	t.Setenv(antigravityActiveOAuthClientEnv, "")

@@ -1012,9 +1012,11 @@ func TestAntigravityOAuthGenerationEndpointNonProductionRequiresExplicitOptIn(t 
 
 func TestAntigravityOAuthWireUsesOfficialIdentity(t *testing.T) {
 	var gotHTTPUserAgent string
+	var gotAPIClient string
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHTTPUserAgent = r.Header.Get("User-Agent")
+		gotAPIClient = r.Header.Get("X-Goog-Api-Client")
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Errorf("decode body: %v", err)
 		}
@@ -1034,6 +1036,9 @@ func TestAntigravityOAuthWireUsesOfficialIdentity(t *testing.T) {
 	_ = resp.Body.Close()
 	if gotHTTPUserAgent != auth.AntigravityUserAgent() {
 		t.Fatalf("HTTP User-Agent = %q", gotHTTPUserAgent)
+	}
+	if gotAPIClient != auth.AntigravityAPIClientHeader() {
+		t.Fatalf("X-Goog-Api-Client = %q", gotAPIClient)
 	}
 	if gotBody["userAgent"] != antigravityOfficialBodyUserAgent {
 		t.Fatalf("body userAgent = %#v", gotBody["userAgent"])

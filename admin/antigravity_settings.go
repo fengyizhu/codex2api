@@ -24,6 +24,8 @@ import (
 const antigravityConfigSaveMaxRetries = 3
 
 type antigravitySettingsResponse struct {
+	UserAgent                   string                            `json:"user_agent"`
+	APIClient                   string                            `json:"api_client"`
 	ModelRedirects              map[string]string                 `json:"model_redirects"`
 	RedirectOverridesEffort     bool                              `json:"redirect_overrides_effort"`
 	ExposeThoughts              bool                              `json:"expose_thoughts"`
@@ -42,6 +44,8 @@ func buildAntigravitySettingsResponse(settings auth.AntigravitySettings) antigra
 		redirects = map[string]string{}
 	}
 	return antigravitySettingsResponse{
+		UserAgent:               settings.UserAgent,
+		APIClient:               settings.APIClient,
 		ModelRedirects:          redirects,
 		RedirectOverridesEffort: settings.RedirectOverridesEffort,
 		ExposeThoughts:          settings.ExposeThoughts,
@@ -65,6 +69,8 @@ func (h *Handler) GetAntigravitySettings(c *gin.Context) {
 // antigravitySettingsPatch 保存 PUT 请求体的 presence 语义：字段缺失=保留现值，
 // 显式 null=重置默认，出现即赋值（Spec §8.2 #1）。
 type antigravitySettingsPatch struct {
+	userAgent               *string
+	apiClient               *string
 	modelRedirects          *map[string]string
 	redirectOverridesEffort *bool
 	exposeThoughts          *bool
@@ -84,7 +90,7 @@ type antigravitySettingsPatch struct {
 
 // empty 报告 patch 是否未包含任何更新字段。
 func (p antigravitySettingsPatch) empty() bool {
-	return p.modelRedirects == nil && p.redirectOverridesEffort == nil && p.exposeThoughts == nil &&
+	return p.userAgent == nil && p.apiClient == nil && p.modelRedirects == nil && p.redirectOverridesEffort == nil && p.exposeThoughts == nil &&
 		!p.quotaRefreshEnabledPresent && !p.quotaRefreshIntervalPresent && !p.quotaGateEnabledPresent &&
 		!p.expiryPriorityEnabledPresent && !p.expiryPriorityHorizonPresent
 }
@@ -103,6 +109,20 @@ func parseAntigravitySettingsPatch(body []byte) (antigravitySettingsPatch, error
 	}
 	for key, raw := range fields {
 		switch key {
+		case "user_agent", "api_client":
+			if isJSONNull(raw) {
+				continue
+			}
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return patch, fmt.Errorf("%s 必须是字符串", key)
+			}
+			if key == "user_agent" {
+				patch.userAgent = &value
+			} else {
+				patch.apiClient = &value
+			}
+
 		case "model_redirects":
 			if isJSONNull(raw) {
 				continue
@@ -212,6 +232,12 @@ func decodeAntigravityBool(raw json.RawMessage, field string) (*bool, error) {
 // 显式持有的字段必须合并回来并告警，否则止血开关会被"缺失即默认 true"无痕掩盖。
 func mergeAntigravitySettingsPatch(base auth.AntigravitySettings, patch antigravitySettingsPatch, held auth.AntigravitySettings) (auth.AntigravitySettings, bool) {
 	merged := base
+	if patch.userAgent != nil {
+		merged.UserAgent = *patch.userAgent
+	}
+	if patch.apiClient != nil {
+		merged.APIClient = *patch.apiClient
+	}
 	if patch.modelRedirects != nil {
 		redirects := make(map[string]string, len(*patch.modelRedirects))
 		for key, value := range *patch.modelRedirects {
@@ -274,7 +300,7 @@ func (h *Handler) UpdateAntigravitySettings(c *gin.Context) {
 		return
 	}
 	if patch.empty() {
-		writeError(c, http.StatusBadRequest, "缺少 model_redirects、redirect_overrides_effort、expose_thoughts、quota_refresh_enabled、quota_refresh_interval_minutes、quota_gate_enabled、expiry_priority_enabled 或 expiry_priority_horizon_hours 字段")
+		writeError(c, http.StatusBadRequest, "缺少 Antigravity 设置字段")
 		return
 	}
 	if h.db == nil {
