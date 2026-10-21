@@ -433,6 +433,60 @@ func TestTranslateRequest_BridgesToolMessageImage(t *testing.T) {
 	}
 }
 
+func TestTranslateRequest_ParallelToolImagesFollowAllToolOutputs(t *testing.T) {
+	image := func(data string) string {
+		return `[{"type":"image_url","image_url":{"url":"data:image/png;base64,` + data + `"}}]`
+	}
+	for _, tc := range []struct {
+		name     string
+		contents [2]string
+		wantImgs int
+	}{
+		{name: "both_images", contents: [2]string{image("AAAA"), image("BBBB")}, wantImgs: 2},
+		{name: "first_image_only", contents: [2]string{image("AAAA"), `"ok"`}, wantImgs: 1},
+		{name: "last_image_only", contents: [2]string{`"ok"`, image("BBBB")}, wantImgs: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`{
+				"model":"gpt-5.4",
+				"messages":[
+					{"role":"user","content":"look"},
+					{"role":"assistant","content":null,"tool_calls":[
+						{"id":"call_a","type":"function","function":{"name":"zoom","arguments":"{}"}},
+						{"id":"call_b","type":"function","function":{"name":"zoom","arguments":"{}"}}
+					]},
+					{"role":"tool","tool_call_id":"call_a","content":` + tc.contents[0] + `},
+					{"role":"tool","tool_call_id":"call_b","content":` + tc.contents[1] + `},
+					{"role":"user","content":"continue"}
+				]
+			}`)
+			got, err := TranslateRequest(raw)
+			if err != nil {
+				t.Fatalf("TranslateRequest returned error: %v", err)
+			}
+			var kinds []string
+			for _, item := range gjson.GetBytes(got, "input").Array() {
+				kind := item.Get("type").String()
+				if kind == "message" {
+					kind += "/" + item.Get("role").String()
+					if item.Get(`content.#(type=="input_image")`).Exists() {
+						kind += "/image"
+					}
+				}
+				kinds = append(kinds, kind)
+			}
+			want := []string{"message/user", "function_call", "function_call", "function_call_output", "function_call_output"}
+			for i := 0; i < tc.wantImgs; i++ {
+				want = append(want, "message/user/image")
+			}
+			want = append(want, "message/user")
+			if strings.Join(kinds, ",") != strings.Join(want, ",") {
+				t.Fatalf("input order = %v, want %v", kinds, want)
+			}
+		})
+	}
+}
+
 func TestTranslateRequest_ToolMessageWithoutImageUnchanged(t *testing.T) {
 	raw := []byte(`{
 		"model":"gpt-5.4",
