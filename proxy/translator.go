@@ -2783,7 +2783,20 @@ func convertMessagesToInputSlice(messages []openAIMessage) []any {
 			}
 		}
 	}
+	// 连续的 tool 消息是同一轮并行工具调用的结果。其中图片抽成的合成 user 消息
+	// 要等这一串 tool 消息全部输出后再追加：逐个紧跟会在多个 function_call_output
+	// 之间夹进 user 文本/图片，Antigravity 合并成一个 Gemini turn 后 functionResponse
+	// 序列被打断，Claude 后端以 "tool_use ids were found without tool_result blocks
+	// immediately after" 拒绝。
+	var pendingToolImages []any
+	flushToolImages := func() {
+		input = append(input, pendingToolImages...)
+		pendingToolImages = nil
+	}
 	for _, m := range messages {
+		if m.Role != "tool" {
+			flushToolImages()
+		}
 		switch m.Role {
 		case "tool":
 			output, images := toolMessageOutputAndImages(m.Content)
@@ -2797,7 +2810,7 @@ func convertMessagesToInputSlice(messages []openAIMessage) []any {
 				"output":  output,
 			})
 			// function_call_output 只能是文本；数组 content 里的图片抽出来放进
-			// 紧随其后的合成 user 消息，附带 call 归属说明。
+			// 合成 user 消息，附带 call 归属说明（在这一串 tool 消息之后追加）。
 			if len(images) > 0 {
 				mediaParts := []any{map[string]any{
 					"type": "input_text",
@@ -2806,7 +2819,7 @@ func convertMessagesToInputSlice(messages []openAIMessage) []any {
 				for _, url := range images {
 					mediaParts = append(mediaParts, map[string]any{"type": "input_image", "image_url": url})
 				}
-				input = append(input, map[string]any{
+				pendingToolImages = append(pendingToolImages, map[string]any{
 					"type":    "message",
 					"role":    "user",
 					"content": mediaParts,
@@ -2864,6 +2877,7 @@ func convertMessagesToInputSlice(messages []openAIMessage) []any {
 			})
 		}
 	}
+	flushToolImages()
 	return input
 }
 

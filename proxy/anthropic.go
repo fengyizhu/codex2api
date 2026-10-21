@@ -719,6 +719,11 @@ func parseAnthropicContent(raw json.RawMessage) []anthropicContentBlock {
 // appendUserBlocks 将 user 消息的内容块转换并追加到 input
 func appendUserBlocks(input []any, blocks []anthropicContentBlock) []any {
 	var contentParts []any
+	// 工具结果里的图片统一延后到本条消息的所有 function_call_output 之后再追加。
+	// 逐个紧跟会让多个并行工具结果之间夹进 user 文本/图片：Antigravity 把相邻
+	// user 内容并成一个 Gemini turn 后，functionResponse 序列被打断，Claude 后端
+	// 以 "tool_use ids were found without tool_result blocks immediately after" 拒绝。
+	var toolImageMessages []any
 	for _, b := range blocks {
 		switch b.Type {
 		case "text":
@@ -747,7 +752,7 @@ func appendUserBlocks(input []any, blocks []anthropicContentBlock) []any {
 				"output":  output,
 			})
 			// Chat/Responses 协议下 function_call_output 只能是文本，图片视觉模型看不见；
-			// 抽出来放进紧随其后的合成 user 消息，附带 call 归属说明。
+			// 抽出来放进合成 user 消息，附带 call 归属说明（在全部工具结果之后追加）。
 			if len(images) > 0 {
 				mediaParts := []any{map[string]any{
 					"type": "input_text",
@@ -756,7 +761,7 @@ func appendUserBlocks(input []any, blocks []anthropicContentBlock) []any {
 				for _, dataURI := range images {
 					mediaParts = append(mediaParts, map[string]any{"type": "input_image", "image_url": dataURI})
 				}
-				input = append(input, map[string]any{
+				toolImageMessages = append(toolImageMessages, map[string]any{
 					"type":    "message",
 					"role":    "user",
 					"content": mediaParts,
@@ -764,6 +769,7 @@ func appendUserBlocks(input []any, blocks []anthropicContentBlock) []any {
 			}
 		}
 	}
+	input = append(input, toolImageMessages...)
 	if len(contentParts) > 0 {
 		input = append(input, map[string]any{
 			"type":    "message",

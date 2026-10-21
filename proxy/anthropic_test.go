@@ -762,6 +762,90 @@ func TestTranslateAnthropicToCodexImageOnlyToolResultUsesMarker(t *testing.T) {
 	}
 }
 
+// Parallel tool results with images must keep every function_call_output
+// contiguous; the synthesized image messages follow all of them. Interleaving
+// (output, image, output, image) made Antigravity's Claude backend reject the
+// next turn with "tool_use ids were found without tool_result blocks".
+func TestTranslateAnthropicToCodexParallelImageToolResultsStayContiguous(t *testing.T) {
+	image := func(data string) string {
+		return `[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + data + `"}}]`
+	}
+	text := `[{"type":"text","text":"ok"}]`
+	for _, tc := range []struct {
+		name     string
+		results  [2]string
+		wantImgs int
+	}{
+		{name: "both_images", results: [2]string{image("AAAA"), image("BBBB")}, wantImgs: 2},
+		{name: "first_image_only", results: [2]string{image("AAAA"), text}, wantImgs: 1},
+		{name: "last_image_only", results: [2]string{text, image("BBBB")}, wantImgs: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`{
+				"model":"claude-sonnet-4-5",
+				"messages":[
+					{"role":"user","content":"look"},
+					{"role":"assistant","content":[
+						{"type":"tool_use","id":"toolu_a","name":"zoom","input":{}},
+						{"type":"tool_use","id":"toolu_b","name":"zoom","input":{}}
+					]},
+					{"role":"user","content":[
+						{"type":"tool_result","tool_use_id":"toolu_a","content":` + tc.results[0] + `},
+						{"type":"tool_result","tool_use_id":"toolu_b","content":` + tc.results[1] + `},
+						{"type":"text","text":"continue"}
+					]}
+				]
+			}`)
+			body, _, err := TranslateAnthropicToCodexWithModels(raw, "", []string{"gpt-5.4"})
+			if err != nil {
+				t.Fatalf("translate: %v", err)
+			}
+			var kinds []string
+			for _, item := range gjson.GetBytes(body, "input").Array() {
+				kind := item.Get("type").String()
+				if kind == "message" {
+					kind += "/" + item.Get("role").String()
+					if item.Get(`content.#(type=="input_image")`).Exists() {
+						kind += "/image"
+					}
+				}
+				kinds = append(kinds, kind)
+			}
+			want := []string{"message/user", "function_call", "function_call", "function_call_output", "function_call_output"}
+			for i := 0; i < tc.wantImgs; i++ {
+				want = append(want, "message/user/image")
+			}
+			want = append(want, "message/user")
+			if strings.Join(kinds, ",") != strings.Join(want, ",") {
+				t.Fatalf("input order = %v, want %v", kinds, want)
+			}
+
+			// Through the Antigravity envelope the tool responses must lead the
+			// merged user turn with nothing in between.
+			gemini, err := responsesToGeminiInternal(body, "project", "claude-sonnet-4-5")
+			if err != nil {
+				t.Fatalf("responsesToGeminiInternal: %v", err)
+			}
+			contents := gemini["request"].(map[string]any)["contents"].([]any)
+			last := contents[len(contents)-1].(map[string]any)
+			parts := last["parts"].([]any)
+			if len(parts) < 2 {
+				t.Fatalf("user turn parts = %#v", parts)
+			}
+			for index := 0; index < 2; index++ {
+				if _, ok := parts[index].(map[string]any)["functionResponse"]; !ok {
+					t.Fatalf("part %d is not a functionResponse: %#v", index, parts)
+				}
+			}
+			for index := 2; index < len(parts); index++ {
+				if _, ok := parts[index].(map[string]any)["functionResponse"]; ok {
+					t.Fatalf("functionResponse at %d after non-tool parts: %#v", index, parts)
+				}
+			}
+		})
+	}
+}
+
 func TestTranslateAnthropicToCodexTextOnlyToolResultNoSyntheticMessage(t *testing.T) {
 	raw := []byte(`{
 		"model":"claude-sonnet-4-5",
