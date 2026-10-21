@@ -175,6 +175,34 @@ func TestTranslateAnthropicToCodexStillJoinsSystemBlocks(t *testing.T) {
 	}
 }
 
+func TestTranslateAnthropicToCodexMovesAssistantTextBeforeToolUse(t *testing.T) {
+	raw := []byte(`{"model":"claude-opus-5-5-low","max_tokens":64,"messages":[
+		{"role":"user","content":"run the tool"},
+		{"role":"assistant","content":[
+			{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}},
+			{"type":"text","text":"I found the result."}
+		]},
+		{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}
+	]}`)
+	body, _, err := TranslateAnthropicToCodexWithModels(raw, "", []string{"claude-opus-5-5-low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := gjson.ParseBytes(body).Get("input").Array()
+	if len(items) != 4 {
+		t.Fatalf("input items = %d, body=%s", len(items), body)
+	}
+	if got := items[1].Get("type").String(); got != "message" {
+		t.Fatalf("assistant text item type = %q, want message", got)
+	}
+	if got := items[2].Get("type").String(); got != "function_call" {
+		t.Fatalf("tool call item type = %q, want function_call", got)
+	}
+	if got := items[3].Get("type").String(); got != "function_call_output" {
+		t.Fatalf("tool result item type = %q, want function_call_output", got)
+	}
+}
+
 func TestTranslateAnthropicToResponsesForGrokDowngradesFollowUpReasoning(t *testing.T) {
 	prev := currentGrokFollowUpEffortConfig()
 	t.Cleanup(func() { SetGrokFollowUpEffortConfig(prev) })

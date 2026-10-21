@@ -46,6 +46,58 @@ func TestAntigravityEnterpriseToolConfigUsesBusinessAICompatibleFields(t *testin
 	}
 }
 
+func TestAntigravityOAuthRecordsFinalUpstreamUserAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != auth.AntigravityUserAgent() {
+			t.Errorf("upstream User-Agent = %q, want %q", got, auth.AntigravityUserAgent())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
+	}))
+	defer server.Close()
+	previous := antigravityOAuthEndpointBases
+	antigravityOAuthEndpointBases = []string{server.URL}
+	t.Cleanup(func() { antigravityOAuthEndpointBases = previous })
+
+	ctx := withUserAgentAudit(context.Background())
+	account := &auth.Account{DBID: 207, UpstreamType: auth.UpstreamAntigravity, AccessToken: "token", AntigravityProjectID: "project"}
+	resp, err := ExecuteAntigravityResponsesRequest(ctx, account, "gemini-3.7-flash-high", []byte(`{"input":"hello"}`), false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	got, ok := upstreamUserAgentAudit(ctx)
+	if !ok || got != auth.AntigravityUserAgent() {
+		t.Fatalf("audited upstream User-Agent = %q, known=%v", got, ok)
+	}
+}
+
+func TestAntigravityInteractionsRecordsFinalUpstreamUserAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != auth.AntigravityUserAgent() {
+			t.Errorf("upstream User-Agent = %q, want %q", got, auth.AntigravityUserAgent())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+	previousEndpoint := antigravityInteractionsEndpoint
+	antigravityInteractionsEndpoint = server.URL
+	t.Cleanup(func() { antigravityInteractionsEndpoint = previousEndpoint })
+
+	ctx := withUserAgentAudit(context.Background())
+	account := &auth.Account{DBID: 208, UpstreamType: auth.UpstreamAntigravity, APIKey: "google-key"}
+	resp, err := executeAntigravityInteractionsRequest(ctx, account, "gemini-2.5-flash", []byte(`{"input":"hello"}`), false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	got, ok := upstreamUserAgentAudit(ctx)
+	if !ok || got != auth.AntigravityUserAgent() {
+		t.Fatalf("audited upstream User-Agent = %q, known=%v", got, ok)
+	}
+}
+
 func TestAntigravityResponsesReasoningEffortMapsToSafeThinkingBudget(t *testing.T) {
 	for _, test := range []struct {
 		effort string

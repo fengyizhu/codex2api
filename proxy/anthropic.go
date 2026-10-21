@@ -776,6 +776,22 @@ func appendUserBlocks(input []any, blocks []anthropicContentBlock) []any {
 
 // appendAssistantBlocks 将 assistant 消息的内容块转换并追加到 input
 func appendAssistantBlocks(input []any, blocks []anthropicContentBlock) []any {
+	// Anthropic requires every assistant tool_use block to be the final block
+	// before the following user tool_result message. Some clients append a text
+	// block after tool_use; normalize that shape before converting to Responses
+	// so Claude backends do not reject the next turn as an unpaired tool call.
+	ordered := make([]anthropicContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if block.Type != "tool_use" {
+			ordered = append(ordered, block)
+		}
+	}
+	for _, block := range blocks {
+		if block.Type == "tool_use" {
+			ordered = append(ordered, block)
+		}
+	}
+	blocks = ordered
 	var textParts []any
 	for _, b := range blocks {
 		switch b.Type {

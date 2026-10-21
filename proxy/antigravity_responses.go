@@ -287,6 +287,7 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("User-Agent", auth.AntigravityUserAgent())
 				req.Header.Set("X-Goog-Api-Client", auth.AntigravityAPIClientHeader())
+				RecordUpstreamUserAgent(req.Context(), req.Header.Get("User-Agent"))
 				if useUserProject {
 					req.Header.Set("x-goog-user-project", project)
 				}
@@ -570,6 +571,9 @@ func executeAntigravityInteractionsRequest(ctx context.Context, account *auth.Ac
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", map[bool]string{true: "text/event-stream", false: "application/json"}[stream])
 	req.Header.Set("x-goog-api-key", apiKey)
+	req.Header.Set("User-Agent", auth.AntigravityUserAgent())
+	req.Header.Set("X-Goog-Api-Client", auth.AntigravityAPIClientHeader())
+	RecordUpstreamUserAgent(req.Context(), req.Header.Get("User-Agent"))
 	if err := ConsumeAPIKeyModelRequestQuota(ctx, wireModel); err != nil {
 		return nil, err
 	}
