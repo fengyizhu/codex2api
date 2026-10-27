@@ -137,6 +137,14 @@ func TestAntigravityFoldBareLogicalModelUsesModelDefaultTier(t *testing.T) {
 	if _, mapped, apiErr := antigravityFoldLogicalModel(effort, "claude-opus-5-5"); apiErr != nil || mapped != "claude-opus-5-5-low" {
 		t.Fatalf("explicit effort fold = %q err=%v", mapped, apiErr)
 	}
+	xhigh := []byte(`{"model":"claude-opus-5-5","reasoning":{"effort":"xhigh"},"input":"hi"}`)
+	if _, mapped, apiErr := antigravityFoldLogicalModel(xhigh, "claude-opus-5-5"); apiErr != nil || mapped != "claude-opus-5-5-high" {
+		t.Fatalf("xhigh effort fold = %q err=%v", mapped, apiErr)
+	}
+	maxEffort := []byte(`{"model":"claude-sonnet-5-5","reasoning":{"effort":"max"},"input":"hi"}`)
+	if _, mapped, apiErr := antigravityFoldLogicalModel(maxEffort, "claude-sonnet-5-5"); apiErr != nil || mapped != "claude-sonnet-5-5-max" {
+		t.Fatalf("max effort fold = %q err=%v", mapped, apiErr)
+	}
 }
 
 func TestAntigravityRedirectChoicesIncludeClaude55(t *testing.T) {
@@ -146,7 +154,7 @@ func TestAntigravityRedirectChoicesIncludeClaude55(t *testing.T) {
 	}
 	for _, family := range []string{"claude-opus-5-5", "claude-sonnet-5-5"} {
 		choice, ok := found[family]
-		want := []string{family + "-low", family + "-medium", family + "-high"}
+		want := []string{family + "-low", family + "-medium", family + "-high", family + "-max"}
 		if !ok || choice.DefaultLevel != "high" || !reflect.DeepEqual(choice.Tiers, want) {
 			t.Fatalf("%s redirect choice = %+v", family, choice)
 		}

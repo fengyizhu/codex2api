@@ -15,8 +15,8 @@ func TestAntigravityPublicModelCatalogIsExact(t *testing.T) {
 		"gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
 		"gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
 		"gemini-3.1-pro-low", "gemini-3.1-pro-high",
-		"claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
-		"claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
+		"claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high", "claude-opus-5-5-max",
+		"claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high", "claude-sonnet-5-5-max",
 		"claude-opus-4-6-thinking",
 		"claude-sonnet-4-6",
 		"gpt-oss-120b-medium",
@@ -81,8 +81,8 @@ func TestAntigravityPublishedModelsProjectCompleteRawCatalog(t *testing.T) {
 		"gemini-3.5-flash-extra-low", "gemini-3.5-flash-low", "gemini-3-flash-agent",
 		"gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-high",
 		"gemini-3.7-flash-tiered", "gemini-3.8-flash-tiered", "gemini-4-argon-high", "gemini-3.1-pro-low", "gemini-pro-agent",
-		"claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
-		"claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
+		"claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high", "claude-opus-5-5-max",
+		"claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high", "claude-sonnet-5-5-max",
 		"claude-opus-4-6-thinking", "claude-sonnet-4-6", "gpt-oss-120b-medium",
 	}
 	want := antigravityPublicModelIDs()
@@ -152,9 +152,13 @@ func TestAntigravityTextBridgeRejectsImageModels(t *testing.T) {
 
 func TestAntigravityClaude55LogicalModelsSelectTierByEffort(t *testing.T) {
 	for _, family := range []string{"claude-opus-5-5", "claude-sonnet-5-5"} {
-		for _, effort := range []string{"low", "medium", "high"} {
+		for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
+			wantEffort := effort
+			if effort == "xhigh" {
+				wantEffort = "high"
+			}
 			variant, ok := antigravityResolvedVariant(family, map[string]any{"effort": effort})
-			if !ok || variant.wireModel != family+"-"+effort || variant.thinkingBudget != 0 {
+			if !ok || variant.wireModel != family+"-"+wantEffort || variant.thinkingBudget != 0 {
 				t.Fatalf("%s/%s variant = %#v", family, effort, variant)
 			}
 		}
