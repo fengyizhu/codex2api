@@ -175,6 +175,29 @@ func TestTranslateAnthropicToCodexStillJoinsSystemBlocks(t *testing.T) {
 	}
 }
 
+func TestTranslateAnthropicToCodexPreservesSystemRoleMessages(t *testing.T) {
+	raw := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"system","content":"Follow the project rules."},{"role":"user","content":"你好"}]}`)
+	body, _, err := TranslateAnthropicToCodexWithModels(raw, "", []string{"gpt-5.5"})
+	if err != nil {
+		t.Fatalf("TranslateAnthropicToCodexWithModels returned error: %v", err)
+	}
+	var got struct {
+		Input []struct {
+			Role    string `json:"role"`
+			Type    string `json:"type"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode translated body: %v", err)
+	}
+	if len(got.Input) != 2 || got.Input[0].Type != "message" || got.Input[0].Role != "developer" || len(got.Input[0].Content) != 1 || got.Input[0].Content[0].Text != "Follow the project rules." {
+		t.Fatalf("system role message was not preserved as developer input: %s", body)
+	}
+}
+
 func TestTranslateAnthropicToCodexMovesAssistantTextBeforeToolUse(t *testing.T) {
 	raw := []byte(`{"model":"claude-opus-5-5-low","max_tokens":64,"messages":[
 		{"role":"user","content":"run the tool"},

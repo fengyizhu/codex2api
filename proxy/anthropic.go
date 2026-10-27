@@ -600,6 +600,16 @@ func appendTranslatedMessages(input []any, messages []anthropicMessage) []any {
 	for _, msg := range messages {
 		blocks := parseAnthropicContent(msg.Content)
 		switch msg.Role {
+		case "system":
+			var texts []string
+			for _, block := range blocks {
+				if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
+					texts = append(texts, block.Text)
+				}
+			}
+			if len(texts) > 0 {
+				input = append(input, grokDeveloperMessage(strings.Join(texts, "\n\n")))
+			}
 		case "user":
 			input = appendUserBlocks(input, blocks)
 		case "assistant":
