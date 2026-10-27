@@ -4730,6 +4730,13 @@
       "hint": "开启后向上游请求思考摘要（includeThoughts），并以 reasoning 输出下发：/v1/responses 为 reasoning 项，/v1/chat/completions 为 reasoning_content，/v1/messages 为 thinking 块。/v1/responses 请求显式设置 reasoning.summary 为 none 时不下发。上游流式响应几乎不带思考摘要，稳定拿到需用非流式请求（非流式的 chat/messages 会改用上游非流式接口）。",
       "saved": "思考内容设置已保存"
     },
+    "antigravitySystemMessages": {
+      "title": "System 消息转为 User",
+      "description": "部分企业 Claude 后端不会处理 Gemini 的 systemInstruction，可将 Antigravity 请求中的 system/developer 消息作为普通 user 内容发送。",
+      "label": "启用转换",
+      "hint": "开启后仅影响 Antigravity 渠道，默认关闭。",
+      "saved": "System 消息转换设置已保存"
+    },
     "antigravityIdentity": {
       "title": "客户端身份头",
       "description": "改写 Antigravity 上游请求的 User-Agent 与 X-Goog-Api-Client，默认模拟官方桌面客户端。",

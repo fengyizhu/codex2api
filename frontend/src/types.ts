@@ -117,6 +117,7 @@ export interface AntigravitySettingsResponse {
   model_redirects: Record<string, string>
   redirect_overrides_effort: boolean
   expose_thoughts: boolean
+  system_messages_as_user: boolean
   user_agent: string
   api_client: string
   choices: AntigravityRedirectChoice[]

@@ -26,6 +26,27 @@ func TestAntigravitySettingsExposeThoughtsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAntigravitySettingsSystemMessagesAsUserRoundTrip(t *testing.T) {
+	encoded, err := EncodeAntigravitySettings(AntigravitySettings{SystemMessagesAsUser: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoded != `{"system_messages_as_user":true}` {
+		t.Fatalf("encoded = %q", encoded)
+	}
+	parsed, err := ParseAntigravitySettings(encoded)
+	if err != nil || !parsed.SystemMessagesAsUser {
+		t.Fatalf("parsed = %+v err=%v", parsed, err)
+	}
+
+	previous := ConfiguredAntigravitySettings()
+	t.Cleanup(func() { SetConfiguredAntigravitySettings(previous) })
+	SetConfiguredAntigravitySettings(parsed)
+	if !AntigravitySystemMessagesAsUser() {
+		t.Fatal("runtime system_messages_as_user not applied")
+	}
+}
+
 func TestAntigravityIdentitySettingsOverrideDefaults(t *testing.T) {
 	previous := ConfiguredAntigravitySettings()
 	t.Cleanup(func() { SetConfiguredAntigravitySettings(previous) })

@@ -1055,6 +1055,54 @@ function AntigravityThinkingCard() {
   )
 }
 
+// Some enterprise Claude backends ignore Gemini systemInstruction. This switch
+// sends system/developer messages as ordinary user content for Antigravity.
+function AntigravitySystemMessagesCard() {
+  const { t } = useTranslation()
+  const { showToast } = useToast()
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void api.getAntigravitySettings().then((response) => {
+      if (active) setEnabled(response.system_messages_as_user)
+    }).catch((error) => {
+      if (active) showToast(getErrorMessage(error), 'error')
+    })
+    return () => { active = false }
+  }, [showToast])
+
+  const save = async (checked: boolean) => {
+    setSaving(true)
+    try {
+      const response = await api.updateAntigravitySettings({ system_messages_as_user: checked })
+      setEnabled(response.system_messages_as_user)
+      showToast(t('settings.antigravitySystemMessages.saved'), 'success')
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <SettingsCard
+      title={t('settings.antigravitySystemMessages.title')}
+      description={t('settings.antigravitySystemMessages.description')}
+      icon={<Shield className="size-4" />}
+    >
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t('settings.antigravitySystemMessages.label')}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.antigravitySystemMessages.hint')}</p>
+        </div>
+        <Switch checked={enabled ?? false} disabled={enabled === null || saving} onCheckedChange={(checked) => void save(checked)} />
+      </div>
+    </SettingsCard>
+  )
+}
+
 function AntigravityIdentityCard() {
   const { t } = useTranslation()
   const { showToast } = useToast()
@@ -5196,6 +5244,7 @@ export default function Settings() {
               <ChannelConnectivityTestCard channel="antigravity" />
               <AntigravityModelRedirectCard />
               <AntigravityThinkingCard />
+              <AntigravitySystemMessagesCard />
               <AntigravityIdentityCard />
               <SettingsCard
                 title={t('settings.antigravityOAuth.title')}

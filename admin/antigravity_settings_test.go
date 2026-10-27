@@ -73,6 +73,12 @@ func TestAntigravitySettingsRoundTrip(t *testing.T) {
 	if !auth.AntigravityExposeThoughts() {
 		t.Fatal("runtime expose_thoughts not applied")
 	}
+	if rec := put(`{"system_messages_as_user":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("system messages switch status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !auth.ConfiguredAntigravitySettings().SystemMessagesAsUser {
+		t.Fatal("runtime system_messages_as_user not applied")
+	}
 	if raw, err := db.LoadAntigravityConfig(context.Background()); err != nil || !strings.Contains(raw, `"expose_thoughts":true`) {
 		t.Fatalf("persisted=%q err=%v", raw, err)
 	}

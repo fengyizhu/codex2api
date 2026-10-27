@@ -246,6 +246,9 @@ func main() {
 		if parsed.ExposeThoughts {
 			log.Printf("Antigravity 思考内容下发已开启")
 		}
+		if parsed.SystemMessagesAsUser {
+			log.Printf("Antigravity system 消息转 user 已开启")
+		}
 	}
 	antigravityCfgCancel()
 

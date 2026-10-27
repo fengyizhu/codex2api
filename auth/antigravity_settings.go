@@ -25,9 +25,13 @@ type AntigravitySettings struct {
 	RedirectOverridesEffort bool `json:"redirect_overrides_effort,omitempty"`
 	// ExposeThoughts 为 true 时，OAuth 账号的 Gemini 请求带 includeThoughts，并把
 	// 上游 thought 片段作为 reasoning 输出下发；默认关闭，保持只下发正文。
-	ExposeThoughts bool   `json:"expose_thoughts,omitempty"`
-	UserAgent      string `json:"user_agent,omitempty"`
-	APIClient      string `json:"api_client,omitempty"`
+	ExposeThoughts bool `json:"expose_thoughts,omitempty"`
+	// SystemMessagesAsUser 为 true 时，Antigravity 将 Responses input 中由
+	// Anthropic messages.role=system 转换来的 system/developer 消息作为 user
+	// 内容发送，适配不处理 Gemini systemInstruction 的 Claude 上游。
+	SystemMessagesAsUser bool   `json:"system_messages_as_user,omitempty"`
+	UserAgent            string `json:"user_agent,omitempty"`
+	APIClient            string `json:"api_client,omitempty"`
 }
 
 var configuredAntigravitySettings atomic.Value // AntigravitySettings
@@ -40,7 +44,7 @@ func SetConfiguredAntigravitySettings(settings AntigravitySettings) {
 // ConfiguredAntigravitySettings 返回当前生效设置的副本。
 func ConfiguredAntigravitySettings() AntigravitySettings {
 	v, _ := configuredAntigravitySettings.Load().(AntigravitySettings)
-	out := AntigravitySettings{RedirectOverridesEffort: v.RedirectOverridesEffort, ExposeThoughts: v.ExposeThoughts, UserAgent: v.UserAgent, APIClient: v.APIClient}
+	out := AntigravitySettings{RedirectOverridesEffort: v.RedirectOverridesEffort, ExposeThoughts: v.ExposeThoughts, SystemMessagesAsUser: v.SystemMessagesAsUser, UserAgent: v.UserAgent, APIClient: v.APIClient}
 	if len(v.ModelRedirects) > 0 {
 		out.ModelRedirects = make(map[string]string, len(v.ModelRedirects))
 		for key, value := range v.ModelRedirects {
@@ -71,6 +75,13 @@ func AntigravityExposeThoughts() bool {
 	return v.ExposeThoughts
 }
 
+// AntigravitySystemMessagesAsUser 报告是否把 messages 中的 system/developer
+// 消息按 user 内容发送给 Antigravity 上游。
+func AntigravitySystemMessagesAsUser() bool {
+	v, _ := configuredAntigravitySettings.Load().(AntigravitySettings)
+	return v.SystemMessagesAsUser
+}
+
 // ParseAntigravitySettings 解析 antigravity_config JSON。空串/`{}` 表示未配置；
 // 解析失败返回错误而不是静默清空，由调用方决定回落。
 func ParseAntigravitySettings(raw string) (AntigravitySettings, error) {
@@ -91,7 +102,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts && normalized.UserAgent == "" && normalized.APIClient == "" {
+	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts && !normalized.SystemMessagesAsUser && normalized.UserAgent == "" && normalized.APIClient == "" {
 		return "{}", nil
 	}
 	encoded, err := json.Marshal(normalized)
@@ -104,7 +115,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 // NormalizeAntigravitySettings 去空白、统一小写、丢弃空值条目并限制条目数。
 // 目标模型是否真是该逻辑模型的档位由 admin 层结合模型目录校验（auth 不依赖 proxy）。
 func NormalizeAntigravitySettings(settings AntigravitySettings) (AntigravitySettings, error) {
-	out := AntigravitySettings{RedirectOverridesEffort: settings.RedirectOverridesEffort, ExposeThoughts: settings.ExposeThoughts}
+	out := AntigravitySettings{RedirectOverridesEffort: settings.RedirectOverridesEffort, ExposeThoughts: settings.ExposeThoughts, SystemMessagesAsUser: settings.SystemMessagesAsUser}
 	if len(settings.ModelRedirects) == 0 {
 		return normalizeAntigravityIdentitySettings(out, settings)
 	}

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -211,6 +212,18 @@ func antigravityOAuthCountTokensCall() antigravityOAuthUpstreamCall {
 	return antigravityOAuthUpstreamCall{Method: "countTokens", Query: ""}
 }
 
+// antigravityLogPath keeps transport diagnostics independent of query strings
+// and credentials while retaining the endpoint family used by the request.
+func antigravityLogPath(path string, enterprise bool) string {
+	if enterprise {
+		if index := strings.LastIndex(path, ":"); index >= 0 {
+			return "/v1beta/projects/.../locations/global:" + path[index+1:]
+		}
+		return "/v1beta/projects/.../locations/global:<method>"
+	}
+	return path
+}
+
 type antigravityOAuthSuccessTransform func(resp *http.Response, stream bool, publicModel string) (*http.Response, error)
 
 func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, payload []byte, call antigravityOAuthUpstreamCall, proxyURL string, wireModel string, transform antigravityOAuthSuccessTransform) (*http.Response, error) {
@@ -291,12 +304,16 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 				if useUserProject {
 					req.Header.Set("x-goog-user-project", project)
 				}
+				log.Printf("Antigravity Claude 上游传输: account=%d enterprise=%t model=%s protocol=%s method=%s host=%s path=%s mode=%s request_format=gemini-cloud-code", account.ID(), enterprise, publicModel, req.Proto, req.Method, req.URL.Host, antigravityLogPath(req.URL.Path, enterprise), map[bool]string{true: "stream", false: "non-stream"}[stream])
 				var doErr error
 				if err := ConsumeAPIKeyModelRequestQuota(ctx, wireModel); err != nil {
 					discardLastRetryable()
 					return nil, err
 				}
 				resp, doErr = doTracedUpstreamRequest(client, req, account, proxyURL)
+				if resp != nil {
+					log.Printf("Antigravity Claude 上游响应: account=%d model=%s status=%d protocol=%s", account.ID(), publicModel, resp.StatusCode, req.Proto)
+				}
 				if doErr != nil {
 					last = doErr
 					resp = nil
@@ -574,6 +591,7 @@ func executeAntigravityInteractionsRequest(ctx context.Context, account *auth.Ac
 	req.Header.Set("User-Agent", auth.AntigravityUserAgent())
 	req.Header.Set("X-Goog-Api-Client", auth.AntigravityAPIClientHeader())
 	RecordUpstreamUserAgent(req.Context(), req.Header.Get("User-Agent"))
+	log.Printf("Antigravity Claude 上游传输: account=%d enterprise=false model=%s protocol=%s method=%s host=%s path=%s mode=%s request_format=interactions", account.ID(), model, req.Proto, req.Method, req.URL.Host, req.URL.Path, map[bool]string{true: "stream", false: "non-stream"}[stream])
 	if err := ConsumeAPIKeyModelRequestQuota(ctx, wireModel); err != nil {
 		return nil, err
 	}
@@ -632,7 +650,7 @@ func responsesToGeminiInternalWithThoughts(raw []byte, project, model string, ac
 	callNames := map[string]string{}
 	systemParts := make([]string, 0, 2)
 	if s, ok := in["instructions"].(string); ok {
-		if s = normalizeClientScaffolding(s); s != "" {
+		if strings.TrimSpace(s) != "" {
 			systemParts = append(systemParts, s)
 		}
 	}
@@ -657,17 +675,25 @@ func responsesToGeminiInternalWithThoughts(raw []byte, project, model string, ac
 				if partsErr != nil {
 					return nil, partsErr
 				}
-				// Message text carries the harness scaffolding; structured
-				// payloads (function calls, images) are never rewritten.
-				parts = normalizeClientScaffoldingParts(parts)
+				isSystemRole := role == "system" || role == "developer"
+				// System text carries caller-provided skills and environment
+				// instructions, including system-reminder blocks. Cleaning it
+				// as conversational scaffolding silently removes capabilities.
+				if !isSystemRole {
+					parts = normalizeClientScaffoldingParts(parts)
+				}
 				switch role {
 				case "assistant":
 					addParts("model", parts)
 				case "system", "developer":
-					for _, p := range parts {
-						if pm, ok := p.(map[string]any); ok {
-							if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
-								systemParts = append(systemParts, t)
+					if auth.AntigravitySystemMessagesAsUser() {
+						addParts("user", parts)
+					} else {
+						for _, p := range parts {
+							if pm, ok := p.(map[string]any); ok {
+								if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
+									systemParts = append(systemParts, t)
+								}
 							}
 						}
 					}
