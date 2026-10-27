@@ -65,9 +65,11 @@ var antigravityPublicModelCatalog = []antigravityPublicModelDefinition{
 	{id: "claude-opus-5-5-low", wireModel: "claude-opus-5-5-low", variants: []antigravityReasoningVariant{{level: "low", wireModel: "claude-opus-5-5-low"}}},
 	{id: "claude-opus-5-5-medium", wireModel: "claude-opus-5-5-medium", variants: []antigravityReasoningVariant{{level: "medium", wireModel: "claude-opus-5-5-medium"}}},
 	{id: "claude-opus-5-5-high", wireModel: "claude-opus-5-5-high", variants: []antigravityReasoningVariant{{level: "high", wireModel: "claude-opus-5-5-high"}}},
+	{id: "claude-opus-5-5-max", wireModel: "claude-opus-5-5-max", variants: []antigravityReasoningVariant{{level: "max", wireModel: "claude-opus-5-5-max"}}},
 	{id: "claude-sonnet-5-5-low", wireModel: "claude-sonnet-5-5-low", variants: []antigravityReasoningVariant{{level: "low", wireModel: "claude-sonnet-5-5-low"}}},
 	{id: "claude-sonnet-5-5-medium", wireModel: "claude-sonnet-5-5-medium", variants: []antigravityReasoningVariant{{level: "medium", wireModel: "claude-sonnet-5-5-medium"}}},
 	{id: "claude-sonnet-5-5-high", wireModel: "claude-sonnet-5-5-high", variants: []antigravityReasoningVariant{{level: "high", wireModel: "claude-sonnet-5-5-high"}}},
+	{id: "claude-sonnet-5-5-max", wireModel: "claude-sonnet-5-5-max", variants: []antigravityReasoningVariant{{level: "max", wireModel: "claude-sonnet-5-5-max"}}},
 	{id: "claude-opus-4-6-thinking", wireModel: "claude-opus-4-6-thinking"},
 	{id: "claude-sonnet-4-6", wireModel: "claude-sonnet-4-6"},
 	{id: "gpt-oss-120b-medium", wireModel: "gpt-oss-120b-medium"},
@@ -104,11 +106,13 @@ var antigravityLogicalCompatibilityCatalog = []antigravityPublicModelDefinition{
 		{level: "low", wireModel: "claude-opus-5-5-low"},
 		{level: "medium", wireModel: "claude-opus-5-5-medium"},
 		{level: "high", wireModel: "claude-opus-5-5-high"},
+		{level: "max", wireModel: "claude-opus-5-5-max"},
 	}},
 	{id: "claude-sonnet-5-5", defaultReasoningLevel: "high", variants: []antigravityReasoningVariant{
 		{level: "low", wireModel: "claude-sonnet-5-5-low"},
 		{level: "medium", wireModel: "claude-sonnet-5-5-medium"},
 		{level: "high", wireModel: "claude-sonnet-5-5-high"},
+		{level: "max", wireModel: "claude-sonnet-5-5-max"},
 	}},
 }
 
@@ -221,6 +225,12 @@ func AntigravityWireModelIDs(model string) []string {
 	seen := make(map[string]struct{}, len(definition.variants))
 	wires := make([]string, 0, len(definition.variants))
 	for _, variant := range definition.variants {
+		// Claude 5.5 max is an optional newer backing for the logical model.
+		// Keep low/medium/high accounts compatible while still requiring the
+		// max backing when the explicit -max model is requested.
+		if variant.level == "max" && strings.HasPrefix(definition.id, "claude-") {
+			continue
+		}
 		if _, exists := seen[variant.wireModel]; exists {
 			continue
 		}
@@ -407,7 +417,11 @@ func antigravityVariantForDefinition(definition antigravityPublicModelDefinition
 	}
 	level := definition.defaultReasoningLevel
 	if len(reasoning) > 0 {
-		level = antigravityGeminiReasoningTier(reasoning)
+		if strings.HasPrefix(definition.id, "claude-") {
+			level = antigravityClaudeReasoningTier(lowerStringField(reasoning, "effort"))
+		} else {
+			level = antigravityGeminiReasoningTier(reasoning)
+		}
 	}
 	for _, variant := range definition.variants {
 		if variant.level == level {
@@ -422,6 +436,20 @@ func antigravityVariantForDefinition(definition antigravityPublicModelDefinition
 		}
 	}
 	return antigravityReasoningVariant{}, false
+}
+
+// antigravityClaudeReasoningTier maps the generic effort vocabulary to the
+// fixed Claude model suffixes exposed by Cloud Code. Claude has a real max
+// backing model, while xhigh is an API-level alias for the high backing.
+func antigravityClaudeReasoningTier(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "xhigh":
+		return "high"
+	case "max":
+		return "max"
+	default:
+		return strings.ToLower(strings.TrimSpace(effort))
+	}
 }
 
 func antigravityResolvedVariant(model string, reasoning map[string]any) (antigravityReasoningVariant, bool) {
@@ -521,6 +549,9 @@ func antigravityFoldLogicalModel(rawBody []byte, requestModel string) ([]byte, s
 		return rawBody, requestModel, nil
 	}
 	effort := strings.ToLower(strings.TrimSpace(gjson.GetBytes(rawBody, "reasoning.effort").String()))
+	if strings.HasPrefix(logical.id, "claude-") {
+		effort = antigravityClaudeReasoningTier(effort)
+	}
 	reasoning := map[string]any{}
 	if effort != "" {
 		reasoning["effort"] = effort
