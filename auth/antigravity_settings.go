@@ -35,6 +35,8 @@ const (
 
 // AntigravitySettings 是 antigravity_config 列的 JSON 形态。
 type AntigravitySettings struct {
+	// SystemMessagesAsUser sends system/developer input messages as user content.
+	SystemMessagesAsUser bool `json:"system_messages_as_user,omitempty"`
 	// ModelRedirects 以逻辑模型（无后缀）为键，固定档位公开 ID 为值。
 	ModelRedirects map[string]string `json:"model_redirects,omitempty"`
 	// RedirectOverridesEffort 为 true 时，即使请求自带 reasoning.effort 也按重定向
@@ -119,6 +121,7 @@ func (s AntigravitySettings) GetExpiryPriorityHorizonHours() int {
 // clone 深拷贝全部字段（含新增指针字段），避免调用方改写进程内已生效配置。
 func (s AntigravitySettings) clone() AntigravitySettings {
 	out := AntigravitySettings{
+		SystemMessagesAsUser:        s.SystemMessagesAsUser,
 		UserAgent:                   s.UserAgent,
 		APIClient:                   s.APIClient,
 		RedirectOverridesEffort:     s.RedirectOverridesEffort,
@@ -320,7 +323,7 @@ func EncodeAntigravitySettings(settings AntigravitySettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts &&
+	if len(normalized.ModelRedirects) == 0 && !normalized.RedirectOverridesEffort && !normalized.ExposeThoughts && !normalized.SystemMessagesAsUser &&
 		normalized.QuotaRefreshEnabled == nil && normalized.QuotaRefreshIntervalMinutes == nil &&
 		normalized.QuotaGateEnabled == nil && normalized.ExpiryPriorityEnabled == nil &&
 		normalized.ExpiryPriorityHorizonHours == nil && normalized.ConfigRevision == 0 && normalized.UserAgent == "" && normalized.APIClient == "" {
@@ -383,4 +386,10 @@ func NormalizeAntigravitySettings(settings AntigravitySettings) (AntigravitySett
 		}
 	}
 	return out, nil
+}
+
+// AntigravitySystemMessagesAsUser reports whether input system/developer messages are sent as user content.
+func AntigravitySystemMessagesAsUser() bool {
+	v, _ := configuredAntigravitySettings.Load().(AntigravitySettings)
+	return v.SystemMessagesAsUser
 }

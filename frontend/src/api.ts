@@ -1064,6 +1064,7 @@ export const api = {
     }),
   getAntigravitySettings: () => request<AntigravitySettingsResponse>('/settings/antigravity'),
   updateAntigravitySettings: (patch: {
+    system_messages_as_user?: boolean
     user_agent?: string
     api_client?: string
     model_redirects?: Record<string, string>

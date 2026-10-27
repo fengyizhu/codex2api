@@ -114,6 +114,7 @@ export interface AntigravityRedirectChoice {
 }
 
 export interface AntigravitySettingsResponse {
+  system_messages_as_user: boolean
   user_agent: string
   api_client: string
   model_redirects: Record<string, string>

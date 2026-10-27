@@ -634,6 +634,32 @@ func TestResponsesToGeminiInternalKeepsSystemInstructionsOutOfUserHistory(t *tes
 	}
 }
 
+func TestResponsesToGeminiInternalCanSendSystemMessagesAsUser(t *testing.T) {
+	previous := auth.ConfiguredAntigravitySettings()
+	t.Cleanup(func() { auth.SetConfiguredAntigravitySettings(previous) })
+	auth.SetConfiguredAntigravitySettings(auth.AntigravitySettings{SystemMessagesAsUser: true})
+
+	got, err := responsesToGeminiInternal([]byte(`{"input":[{"role":"system","content":"skills from messages"},{"role":"user","content":"hello"}]}`), "project", "gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := got["request"].(map[string]any)
+	if _, ok := request["systemInstruction"]; ok {
+		t.Fatalf("systemInstruction should be omitted when switch is enabled: %#v", request["systemInstruction"])
+	}
+	contents := request["contents"].([]any)
+	if len(contents) != 1 || contents[0].(map[string]any)["role"] != "user" {
+		t.Fatalf("contents = %#v", contents)
+	}
+	if gotText := extractGeminiRequestText(contents[0]); gotText != "skills from messages" {
+		t.Fatalf("converted system text = %q", gotText)
+	}
+	parts := contents[0].(map[string]any)["parts"].([]any)
+	if len(parts) != 2 || parts[1].(map[string]any)["text"] != "hello" {
+		t.Fatalf("merged user parts = %#v", parts)
+	}
+}
+
 func TestResponsesToGeminiInternalObfuscatesSensitivePhrasesOnlyInSystemInstruction(t *testing.T) {
 	t.Setenv(antigravitySensitivePhrasesEnv, "Custom Agent")
 	got, err := responsesToGeminiInternal([]byte(`{

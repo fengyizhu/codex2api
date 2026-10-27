@@ -24,6 +24,7 @@ import (
 const antigravityConfigSaveMaxRetries = 3
 
 type antigravitySettingsResponse struct {
+	SystemMessagesAsUser        bool                              `json:"system_messages_as_user"`
 	UserAgent                   string                            `json:"user_agent"`
 	APIClient                   string                            `json:"api_client"`
 	ModelRedirects              map[string]string                 `json:"model_redirects"`
@@ -44,6 +45,7 @@ func buildAntigravitySettingsResponse(settings auth.AntigravitySettings) antigra
 		redirects = map[string]string{}
 	}
 	return antigravitySettingsResponse{
+		SystemMessagesAsUser:    settings.SystemMessagesAsUser,
 		UserAgent:               settings.UserAgent,
 		APIClient:               settings.APIClient,
 		ModelRedirects:          redirects,
@@ -69,6 +71,7 @@ func (h *Handler) GetAntigravitySettings(c *gin.Context) {
 // antigravitySettingsPatch 保存 PUT 请求体的 presence 语义：字段缺失=保留现值，
 // 显式 null=重置默认，出现即赋值（Spec §8.2 #1）。
 type antigravitySettingsPatch struct {
+	systemMessagesAsUser    *bool
 	userAgent               *string
 	apiClient               *string
 	modelRedirects          *map[string]string
@@ -90,7 +93,7 @@ type antigravitySettingsPatch struct {
 
 // empty 报告 patch 是否未包含任何更新字段。
 func (p antigravitySettingsPatch) empty() bool {
-	return p.userAgent == nil && p.apiClient == nil && p.modelRedirects == nil && p.redirectOverridesEffort == nil && p.exposeThoughts == nil &&
+	return p.systemMessagesAsUser == nil && p.userAgent == nil && p.apiClient == nil && p.modelRedirects == nil && p.redirectOverridesEffort == nil && p.exposeThoughts == nil &&
 		!p.quotaRefreshEnabledPresent && !p.quotaRefreshIntervalPresent && !p.quotaGateEnabledPresent &&
 		!p.expiryPriorityEnabledPresent && !p.expiryPriorityHorizonPresent
 }
@@ -109,6 +112,16 @@ func parseAntigravitySettingsPatch(body []byte) (antigravitySettingsPatch, error
 	}
 	for key, raw := range fields {
 		switch key {
+		case "system_messages_as_user":
+			if isJSONNull(raw) {
+				continue
+			}
+			value, err := decodeAntigravityBool(raw, key)
+			if err != nil {
+				return patch, err
+			}
+			patch.systemMessagesAsUser = value
+
 		case "user_agent", "api_client":
 			if isJSONNull(raw) {
 				continue
@@ -232,6 +245,9 @@ func decodeAntigravityBool(raw json.RawMessage, field string) (*bool, error) {
 // 显式持有的字段必须合并回来并告警，否则止血开关会被"缺失即默认 true"无痕掩盖。
 func mergeAntigravitySettingsPatch(base auth.AntigravitySettings, patch antigravitySettingsPatch, held auth.AntigravitySettings) (auth.AntigravitySettings, bool) {
 	merged := base
+	if patch.systemMessagesAsUser != nil {
+		merged.SystemMessagesAsUser = *patch.systemMessagesAsUser
+	}
 	if patch.userAgent != nil {
 		merged.UserAgent = *patch.userAgent
 	}

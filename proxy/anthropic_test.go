@@ -198,6 +198,92 @@ func TestTranslateAnthropicToCodexPreservesSystemRoleMessages(t *testing.T) {
 	}
 }
 
+// End-to-end check for the Antigravity Claude path: every system text — the
+// top-level `system` field and role=system entries anywhere in `messages`,
+// as a string or as text blocks — must reach the Gemini systemInstruction
+// exactly once, in request order, without leaking into conversation contents
+// or dropping the surrounding user/assistant turns.
+func TestAntigravityMessagesKeepEverySystemTextInSystemInstruction(t *testing.T) {
+	raw := []byte(`{
+		"model":"claude-opus-5-5",
+		"max_tokens":1024,
+		"system":[
+			{"type":"text","text":"SYS_TOP_STATIC","cache_control":{"type":"ephemeral"}},
+			{"type":"text","text":"SYS_TOP_DYNAMIC"}
+		],
+		"messages":[
+			{"role":"system","content":"SYS_MSG_BEFORE_USER"},
+			{"role":"user","content":[{"type":"text","text":"USER_TURN_ONE"}]},
+			{"role":"assistant","content":[{"type":"text","text":"ASSISTANT_TURN_ONE"}]},
+			{"role":"system","content":[
+				{"type":"text","text":"SYS_MSG_BLOCK_A","cache_control":{"type":"ephemeral"}},
+				{"type":"text","text":"   "},
+				{"type":"text","text":"SYS_MSG_BLOCK_B"}
+			]},
+			{"role":"user","content":"USER_TURN_TWO"},
+			{"role":"system","content":"SYS_MSG_TRAILING"},
+			{"role":"system","content":"   "}
+		]
+	}`)
+	systemMarkers := []string{
+		"SYS_TOP_STATIC", "SYS_TOP_DYNAMIC",
+		"SYS_MSG_BEFORE_USER", "SYS_MSG_BLOCK_A", "SYS_MSG_BLOCK_B", "SYS_MSG_TRAILING",
+	}
+	turnMarkers := []string{"USER_TURN_ONE", "ASSISTANT_TURN_ONE", "USER_TURN_TWO"}
+
+	body, _, err := TranslateAnthropicToCodexWithModels(raw, "", []string{"claude-opus-5-5"})
+	if err != nil {
+		t.Fatalf("translate Messages to Responses: %v", err)
+	}
+	gemini, err := responsesToGeminiInternal(body, "project", "claude-opus-5-5")
+	if err != nil {
+		t.Fatalf("translate Responses to Antigravity: %v; responses=%s", err, body)
+	}
+	request := gemini["request"].(map[string]any)
+
+	var system strings.Builder
+	if instruction, ok := request["systemInstruction"].(map[string]any); ok {
+		for _, part := range instruction["parts"].([]any) {
+			text, _ := part.(map[string]any)["text"].(string)
+			system.WriteString(text)
+		}
+	}
+	systemText := system.String()
+	contentsJSON, err := json.Marshal(request["contents"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(contentsJSON)
+
+	previous := -1
+	for _, marker := range systemMarkers {
+		if count := strings.Count(systemText, marker); count != 1 {
+			t.Fatalf("%s appears %d times in systemInstruction, want 1:\n%s", marker, count, systemText)
+		}
+		index := strings.Index(systemText, marker)
+		if index < previous {
+			t.Fatalf("%s is out of request order in systemInstruction:\n%s", marker, systemText)
+		}
+		previous = index
+		if strings.Contains(contents, marker) {
+			t.Fatalf("%s leaked into conversation contents: %s", marker, contents)
+		}
+	}
+	for _, marker := range turnMarkers {
+		if !strings.Contains(contents, marker) {
+			t.Fatalf("conversation turn %s was dropped: %s", marker, contents)
+		}
+		if strings.Contains(systemText, marker) {
+			t.Fatalf("conversation turn %s leaked into systemInstruction:\n%s", marker, systemText)
+		}
+	}
+	for _, segment := range strings.Split(systemText, "\n\n") {
+		if strings.TrimSpace(segment) == "" {
+			t.Fatalf("blank system text produced an empty systemInstruction segment: %q", systemText)
+		}
+	}
+}
+
 func TestTranslateAnthropicToCodexMovesAssistantTextBeforeToolUse(t *testing.T) {
 	raw := []byte(`{"model":"claude-opus-5-5-low","max_tokens":64,"messages":[
 		{"role":"user","content":"run the tool"},
