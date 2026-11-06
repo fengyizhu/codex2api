@@ -74,7 +74,7 @@ Do NOT batch operations if they depend on the output of a previous operation in 
 
 当前网关不会自动注入上面整套 Antigravity 官方 System Prompt。请求中的 `instructions` 或 `system` 消息会转换为上游 `systemInstruction`；调用方没有传入时，网关不会补一份官方默认 Prompt。
 
-网关还会按配置执行客户端脚手架清理：默认移除部分 `<system-reminder>`、模型归属提示和 Claude/代理脚手架文本，并对少数敏感短语插入零宽字符。默认连接测试 Prompt 是 `hi`，函数工具默认开启，思维内容默认不暴露。
+网关会按配置清理普通对话中的客户端脚手架；Antigravity 的 `instructions` 和 system/developer 消息不经过这项清理，以保留 Skills 与环境说明。Messages 转换仍会移除可识别的开头传输元数据行。敏感短语处理可能插入零宽字符。启用 `system_messages_as_user` 时，消息数组中的 system/developer 内容改为 user 内容，顶级 system 对应的 `instructions` 仍进入 `systemInstruction`。默认连接测试 Prompt 是 `hi`，函数工具默认开启，思维内容默认不暴露。
 
 ## 结论
 

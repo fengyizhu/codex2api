@@ -61,3 +61,18 @@ func TestWriteSSECommentNilAndEmptySafe(t *testing.T) {
 		t.Fatalf("空注释不应写任何字节: %q", out.String())
 	}
 }
+
+func TestDeferredResponsesSSEPreservesEventNamesAndOrder(t *testing.T) {
+	var out, pending bytes.Buffer
+	w := &streamFlushWriter{writer: &out, policy: StreamFlushPolicyImmediate}
+	if wrote, err := writeDeferredSSEEventData(w, &pending, "response.created", []byte(`{"type":"response.created"}`), true); err != nil || wrote || out.Len() != 0 {
+		t.Fatalf("pre-token event was not deferred: wrote=%v err=%v output=%q", wrote, err, out.String())
+	}
+	if wrote, err := writeDeferredSSEEventData(w, &pending, "response.output_text.delta", []byte(`{"type":"response.output_text.delta","delta":"hi"}`), false); err != nil || !wrote {
+		t.Fatalf("first content did not release pending events: wrote=%v err=%v", wrote, err)
+	}
+	want := "event: response.created\ndata: {\"type\":\"response.created\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n"
+	if out.String() != want || pending.Len() != 0 {
+		t.Fatalf("released frames=%q pending=%d", out.String(), pending.Len())
+	}
+}

@@ -12891,6 +12891,7 @@ func (s *Store) publishAntigravityRuntimeRow(acc *Account, row *database.Account
 	planKeyChanged := acc.AntigravityPlanKey != planKey
 	acc.AntigravityPlanKey = planKey
 	acc.AntigravityProjectID = strings.TrimSpace(row.GetCredential("project_id"))
+	acc.AntigravityOAuthClientKey = strings.TrimSpace(row.GetCredential("oauth_client_key"))
 	acc.Models = models
 	acc.ProxyURL = strings.TrimSpace(row.ProxyURL)
 	acc.AntigravityHardBlocked = hardReason != ""

@@ -81,6 +81,22 @@ func TestAntigravitySettingsRoundTrip(t *testing.T) {
 	if !auth.ConfiguredAntigravitySettings().SystemMessagesAsUser {
 		t.Fatal("runtime system_messages_as_user not applied")
 	}
+	// Updating quota settings must retain the local compatibility fields, and
+	// clearing those fields must preserve the explicit quota gate override.
+	if rec := put(`{"quota_gate_enabled":false,"quota_refresh_interval_minutes":5}`); rec.Code != http.StatusOK {
+		t.Fatalf("quota update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	settings := auth.ConfiguredAntigravitySettings()
+	if !settings.SystemMessagesAsUser || settings.UserAgent != "ua-settings" || settings.APIClient != "api-settings" {
+		t.Fatalf("quota update lost compatibility settings: %+v", settings)
+	}
+	if rec := put(`{"system_messages_as_user":false,"user_agent":"","api_client":""}`); rec.Code != http.StatusOK {
+		t.Fatalf("clear compatibility status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	settings = auth.ConfiguredAntigravitySettings()
+	if settings.SystemMessagesAsUser || settings.UserAgent != "" || settings.APIClient != "" || settings.GetQuotaGateEnabled() || settings.GetQuotaRefreshIntervalMinutes() != 5 {
+		t.Fatalf("compatibility update lost quota settings: %+v", settings)
+	}
 	if raw, err := db.LoadAntigravityConfig(context.Background()); err != nil || !strings.Contains(raw, `"expose_thoughts":true`) {
 		t.Fatalf("persisted=%q err=%v", raw, err)
 	}

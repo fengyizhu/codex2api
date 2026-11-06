@@ -261,6 +261,10 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 		lastRetryableResponse = nil
 	}
 	useUserProject := antigravityUserProjectHeaderEnabled()
+	// Both transports must apply envelope-level compatibility fixes before the
+	// enterprise transport extracts the inner request.
+	payload = sanitizeAntigravityEnvelopeToolSchemas(payload)
+	payload = relaxAntigravityClaudeForcedToolChoice(payload)
 	enterprise := account.IsAntigravityEnterprise()
 	if enterprise {
 		var envelope map[string]any
@@ -283,8 +287,6 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 		useUserProject = false
 	}
 	sameEndpointBudget := &antigravitySameEndpointRetryBudget{}
-	payload = sanitizeAntigravityEnvelopeToolSchemas(payload)
-	payload = relaxAntigravityClaudeForcedToolChoice(payload)
 	publicModel := strings.TrimSpace(wireModel)
 	for headerAttempt := 0; headerAttempt < 2; headerAttempt++ {
 		retryWithoutUserProject := false
@@ -319,7 +321,7 @@ func executeAntigravityOAuthRequest(ctx context.Context, account *auth.Account, 
 				}
 				resp, doErr = doTracedUpstreamRequest(client, req, account, proxyURL)
 				if resp != nil {
-					log.Printf("Antigravity Claude 上游响应: account=%d model=%s status=%d protocol=%s", account.ID(), publicModel, resp.StatusCode, req.Proto)
+					log.Printf("Antigravity Claude 上游响应: account=%d model=%s status=%d protocol=%s", account.ID(), publicModel, resp.StatusCode, resp.Proto)
 				}
 				if doErr != nil {
 					last = doErr

@@ -2092,3 +2092,49 @@ func TestAntigravityCustomToolCallInputFallsBackToRawArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityEnterpriseAppliesEnvelopeToolCompatibilityBeforeUnwrap(t *testing.T) {
+	account := &auth.Account{DBID: 314001, UpstreamType: auth.UpstreamAntigravity, AccessToken: "test-token", AntigravityProjectID: "test-project", AntigravityOAuthClientKey: auth.AntigravityEnterpriseOAuthClientKey}
+	key := antigravityHTTPClientKey{accountID: account.ID()}
+	var sent []byte
+	client := &http.Client{Transport: claudeBoundaryRoundTripper(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "businessaicode.googleapis.com" {
+			t.Errorf("enterprise host = %s", r.URL.Host)
+		}
+		var err error
+		sent, err = io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})}
+	previous, existed := antigravityHTTPClients.Load(key)
+	antigravityHTTPClients.Store(key, client)
+	t.Cleanup(func() {
+		if existed {
+			antigravityHTTPClients.Store(key, previous)
+		} else {
+			antigravityHTTPClients.Delete(key)
+		}
+	})
+	payload := []byte(`{"project":"test-project","model":"claude-sonnet-5-5-low","request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"tools":[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"OBJECT","properties":{"query":{"type":"STRING"}}}}]}],"toolConfig":{"includeServerSideToolInvocations":true,"functionCallingConfig":{"mode":"ANY","allowedFunctionNames":["lookup"]}}}}`)
+	resp, err := executeAntigravityOAuthRequest(context.Background(), account, payload, antigravityOAuthUpstreamCall{Method: "generateContent"}, "", "claude-sonnet-5-5-low", func(resp *http.Response, _ bool, _ string) (*http.Response, error) { return resp, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got := gjson.GetBytes(sent, "toolConfig.functionCallingConfig.mode").String(); got != "AUTO" {
+		t.Fatalf("forced Claude tool mode = %q, want AUTO", got)
+	}
+	for _, path := range []string{"request", "toolConfig.functionCallingConfig.allowedFunctionNames", "toolConfig.includeServerSideToolInvocations", "tools.0.functionDeclarations.0.parameters"} {
+		if gjson.GetBytes(sent, path).Exists() {
+			t.Errorf("unsupported field retained: %s", path)
+		}
+	}
+	if got := gjson.GetBytes(sent, "tools.0.functionDeclarations.0.parametersJsonSchema.properties.query.type").String(); got != "string" {
+		t.Errorf("schema type = %q, want string", got)
+	}
+	if got := gjson.GetBytes(sent, "aicode.experience").String(); got != "claude-sonnet-5-5-low" {
+		t.Errorf("experience = %q", got)
+	}
+}

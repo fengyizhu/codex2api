@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codex2api/cache"
+	"github.com/codex2api/database"
 )
 
 func TestAntigravityAccountParticipatesInScheduling(t *testing.T) {
@@ -338,5 +339,25 @@ func TestAntigravityVersionFromUserAgent(t *testing.T) {
 	t.Setenv(antigravityUserAgentEnv, "antigravity/hub/9.9.9 darwin/arm64")
 	if got := AntigravityUserAgent(); got != "antigravity/hub/9.9.9 darwin/arm64" {
 		t.Fatalf("env override = %q", got)
+	}
+}
+
+func TestAntigravityRuntimePublishRefreshesEnterpriseRouting(t *testing.T) {
+	store := NewStore(nil, nil, &database.SystemSettings{})
+	t.Cleanup(store.Stop)
+	account := &Account{UpstreamType: UpstreamAntigravity}
+	row := &database.AccountRow{Credentials: map[string]any{
+		"upstream_type":    UpstreamAntigravity,
+		"oauth_client_key": AntigravityEnterpriseOAuthClientKey,
+		"project_id":       "enterprise-project",
+	}}
+	store.publishAntigravityRuntimeRow(account, row)
+	if !account.IsAntigravityEnterprise() {
+		t.Fatal("runtime publish did not enable enterprise routing")
+	}
+	row.Credentials["oauth_client_key"] = AntigravityDefaultOAuthClientKey
+	store.publishAntigravityRuntimeRow(account, row)
+	if account.IsAntigravityEnterprise() {
+		t.Fatal("runtime publish retained stale enterprise routing")
 	}
 }
