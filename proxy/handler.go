@@ -4951,9 +4951,11 @@ func (h *Handler) Responses(c *gin.Context) {
 			var usage *UsageInfo
 			var actualServiceTier string
 			responseModelObserver := &upstreamResponseModelObserver{}
+			// ttftRecorded tracks response progress for timeout handling;
+			// firstTokenMs independently measures the first actual content event.
 			ttftRecorded := false
 			// contentTokenSeen is deliberately strict and independent from the
-			// operator's TTFT mode. In loose mode, preflight metadata records TTFT
+			// response progress flag. Preflight metadata records progress
 			// without committing model output and must not close the transparent
 			// retry window.
 			contentTokenSeen := false
@@ -5035,9 +5037,9 @@ func (h *Handler) Responses(c *gin.Context) {
 					eventType := normalizedUpstreamSSEEventType(sseEvent, data)
 					ApplyCodexUsageEventFrame(h.store, account, eventType, parsed, time.Now())
 					ttftGuard.MarkProgress(eventType)
+					recordFirstContentTime(parsed, start, &firstTokenMs)
 					isFirstToken := isLooseFirstTokenResult(parsed)
 					if !ttftRecorded && isFirstToken {
-						firstTokenMs = int(time.Since(start).Milliseconds())
 						ttftRecorded = true
 					}
 					if !contentTokenSeen && isFirstTokenResult(parsed) {
@@ -5654,6 +5656,8 @@ func (h *Handler) Responses(c *gin.Context) {
 		var usage *UsageInfo
 		var actualServiceTier string
 		responseModelObserver := &upstreamResponseModelObserver{}
+		// ttftRecorded tracks response progress for timeout handling;
+		// firstTokenMs independently measures the first actual content event.
 		ttftRecorded := false
 		gotTerminal := false // 是否收到 response.completed 或 response.failed
 		deltaCharCount := 0  // 累计 delta 字符数（用于断流时估算 token）
@@ -5663,8 +5667,8 @@ func (h *Handler) Responses(c *gin.Context) {
 		// 首 token 前收到不可重试的 response.failed 时置位:中止 SSE 转发、
 		// 不做 transport flush(避免提前提交 200 header),循环外按真实错误码返回 JSON。
 		abortedForHTTPError := false
-		// contentTokenSeen: 是否已出现真正的内容事件（严格判定，与宽松首字统计无关）。
-		// 首字统计按宽松口径，codex.rate_limits 等前置事件会置位 ttftRecorded，"首 token 前"
+		// contentTokenSeen: 是否已出现真正的内容事件（严格判定，与宽松响应进度无关）。
+		// 响应进度按宽松口径，codex.rate_limits 等前置事件会置位 ttftRecorded，"首 token 前"
 		// 的失败抑制/真实错误码/事件缓冲决策改用本标志。
 		contentTokenSeen := false
 		var responseJSON []byte
@@ -5761,12 +5765,12 @@ func (h *Handler) Responses(c *gin.Context) {
 
 				// TTFT: 记录第一个实际内容事件的时间
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				isFirstToken := isLooseFirstTokenResult(parsed)
 				if !ttftRecorded && isFirstToken {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
-				// contentTokenSeen 用严格判定（与宽松首字统计无关）：宽松口径下
+				// contentTokenSeen 用严格判定（与宽松响应进度无关）：宽松口径下
 				// codex.rate_limits 等前置事件也会置位 ttftRecorded，若用它做"首 token 前"
 				// 判断，失败抑制/真实错误码/超窗压缩重试全部失效。
 				if !contentTokenSeen && isFirstTokenResult(parsed) {
@@ -6037,8 +6041,8 @@ func (h *Handler) Responses(c *gin.Context) {
 					imageOutputs = append(imageOutputs, imageOutput)
 				}
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				if !ttftRecorded && isLooseFirstTokenResult(parsed) {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
 				// 累计 delta 字符数
@@ -7885,10 +7889,12 @@ func (h *Handler) ChatCompletions(c *gin.Context) {
 		var usage *UsageInfo
 		var actualServiceTier string
 		responseModelObserver := &upstreamResponseModelObserver{}
+		// ttftRecorded tracks response progress for timeout handling;
+		// firstTokenMs independently measures the first actual content event.
 		ttftRecorded := false
-		// TTFT may use loose structural progress, but retry safety is based on
+		// Timeout handling uses structural progress, but retry safety is based on
 		// actual content. Chat translation drops many structural events, so
-		// treating loose TTFT as output would strand a retryable failure even
+		// treating structural progress as output would strand a retryable failure even
 		// though no downstream bytes were written.
 		contentTokenSeen := false
 		gotTerminal := false // 是否收到 response.completed 或 response.failed
@@ -7970,9 +7976,9 @@ func (h *Handler) ChatCompletions(c *gin.Context) {
 					}
 				}
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				isFirstToken := isLooseFirstTokenResult(parsed)
 				if !ttftRecorded && isFirstToken {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
 				if !contentTokenSeen && isFirstTokenResult(parsed) {
@@ -8133,8 +8139,8 @@ func (h *Handler) ChatCompletions(c *gin.Context) {
 				outputCollector.Add(data)
 				ApplyCodexUsageEventFrame(h.store, account, eventType, parsed, time.Now())
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				if !ttftRecorded && isLooseFirstTokenResult(parsed) {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
 				eventType, data, parsed = rewriteEmptyIncompleteTerminal(emptyIncomplete, eventType, data, parsed)

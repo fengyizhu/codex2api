@@ -1494,6 +1494,8 @@ func (h *Handler) Messages(c *gin.Context) {
 		var firstTokenMs int
 		var usage *UsageInfo
 		var actualServiceTier string
+		// ttftRecorded tracks response progress for timeout handling;
+		// firstTokenMs independently measures the first actual content event.
 		ttftRecorded := false
 		gotTerminal := false
 		deltaCharCount := 0
@@ -1536,7 +1538,7 @@ func (h *Handler) Messages(c *gin.Context) {
 			// Anthropic 原生 ping；翻译写入与保活不会再由独立 ticker 并发。
 			// contentStarted 用严格口径（isFirstTokenResult）跟踪"首个真实内容帧"，
 			// 专供流提交决策（缓冲/重试窗口/failed 抑制）使用；ttftRecorded 按
-			// 宽松首字口径记录，只用于首字统计。宽松口径会把
+			// 宽松进度口径记录，用于超时保护。宽松口径会把
 			// output_item.added 等纯结构帧当"首字"，若拿它做流提交门，结构帧一到
 			// 就落盘 200，首包前静默重试窗口被过早关闭（issue #435）。
 			readErr = readSSEStreamWithContinuousRetryKeepalive(readCtx, resp.Body, func(sseEvent string, data []byte) bool {
@@ -1562,9 +1564,9 @@ func (h *Handler) Messages(c *gin.Context) {
 
 				// TTFT 跟踪
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				isFirstToken := isLooseFirstTokenResult(parsed)
 				if !ttftRecorded && isFirstToken {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
 				if !contentStarted && isFirstTokenResult(parsed) {
@@ -1743,8 +1745,8 @@ func (h *Handler) Messages(c *gin.Context) {
 				}
 
 				ttftGuard.MarkProgress(eventType)
+				recordFirstContentTime(parsed, start, &firstTokenMs)
 				if !ttftRecorded && isLooseFirstTokenResult(parsed) {
-					firstTokenMs = int(time.Since(start).Milliseconds())
 					ttftRecorded = true
 				}
 				if eventType == "response.output_text.delta" || isCodexToolInputDeltaEvent(eventType) {

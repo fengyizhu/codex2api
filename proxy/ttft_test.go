@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"testing"
+	"time"
 
 	"github.com/tidwall/gjson"
 )
@@ -85,9 +86,14 @@ func TestIsFirstTokenPayload(t *testing.T) {
 		{"content_part_added", []byte(`{"type":"response.content_part.added","part":{"type":"output_text","text":""}}`), false},
 		{"empty_reasoning_summary_part", []byte(`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":""}}`), false},
 		{"reasoning_summary_part_with_text", []byte(`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":"initial thought"}}`), true},
+		{"reasoning_summary_part_done_with_text", []byte(`{"type":"response.reasoning_summary_part.done","part":{"type":"summary_text","text":"initial thought"}}`), true},
+		{"reasoning_summary_text_done_without_text", []byte(`{"type":"response.reasoning_summary_text.done"}`), false},
 		{"output_text_delta", []byte(`{"type":"response.output_text.delta","delta":"hello"}`), true},
+		{"output_text_delta_empty", []byte(`{"type":"response.output_text.delta","delta":""}`), false},
+		{"output_text_done_with_text", []byte(`{"type":"response.output_text.done","text":"done"}`), false},
 		{"function_call_arguments_delta", []byte(`{"type":"response.function_call_arguments.delta","delta":"{\"city\""}`), true},
 		{"function_call_arguments_done", []byte(`{"type":"response.function_call_arguments.done","arguments":"{}"}`), true},
+		{"custom_tool_call_input_delta", []byte(`{"type":"response.custom_tool_call_input.delta","delta":"{}"}`), true},
 		{"image_partial", []byte(`{"type":"response.image_generation_call.partial_image","partial_image_b64":"abc"}`), true},
 		{"output_item_done_image", []byte(`{"type":"response.output_item.done","item":{"type":"image_generation_call","result":"abc"}}`), true},
 		{"output_item_done_message", []byte(`{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"done"}]}}`), true},
@@ -160,6 +166,46 @@ func TestLooseFirstTokenResult(t *testing.T) {
 			}
 			if got := isLooseFirstTokenResult(parsed); got != tc.wantLoose {
 				t.Fatalf("loose first token got %v, want %v", got, tc.wantLoose)
+			}
+		})
+	}
+}
+
+func TestRecordFirstContentTime(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"response.output_text.delta","delta":"hello"}`,
+		`{"type":"response.reasoning_summary_text.delta","delta":"thinking"}`,
+		`{"type":"response.reasoning.encrypted_content.delta","delta":"encrypted"}`,
+		`{"type":"response.function_call_arguments.delta","delta":"{}"}`,
+		`{"type":"response.image_generation_call.partial_image","partial_image_b64":"abc"}`,
+		`{"type":"response.output_item.done","item":{"type":"image_generation_call","result":"abc"}}`,
+	} {
+		t.Run(gjson.Get(payload, "type").String(), func(t *testing.T) {
+			var elapsed int
+			for _, preflight := range []string{
+				`{"type":"codex.rate_limits"}`,
+				`{"type":"response.output_item.added","item":{"type":"reasoning"}}`,
+				`{"type":"response.content_part.added","part":{"type":"output_text","text":""}}`,
+				`{"type":"response.output_text.delta","delta":""}`,
+				`{"type":"response.reasoning_summary_text.delta","delta":""}`,
+				`{"type":"response.function_call_arguments.delta","delta":""}`,
+				`{"type":"response.image_generation_call.in_progress"}`,
+				`{"type":"response.image_generation_call.partial_image","partial_image_b64":""}`,
+				`{"type":"response.completed"}`,
+			} {
+				recordFirstContentTime(gjson.Parse(preflight), time.Now().Add(-time.Second), &elapsed)
+				if elapsed != 0 {
+					t.Fatalf("non-content recorded TTFT: %s", preflight)
+				}
+			}
+			recordFirstContentTime(gjson.Parse(payload), time.Now().Add(-time.Second), &elapsed)
+			if elapsed < 1000 {
+				t.Fatalf("content TTFT=%d", elapsed)
+			}
+			first := elapsed
+			recordFirstContentTime(gjson.Parse(payload), time.Now().Add(-2*time.Second), &elapsed)
+			if elapsed != first {
+				t.Fatal("later content overwrote first content time")
 			}
 		})
 	}

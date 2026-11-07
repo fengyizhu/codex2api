@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"strings"
+	"time"
 
 	"github.com/tidwall/gjson"
 )
@@ -64,27 +65,36 @@ func isFirstTokenResult(parsed gjson.Result) bool {
 	case "response.reasoning_summary_part.added":
 		return parsed.Get("part.type").String() == "summary_text" &&
 			contentPartHasFirstTokenContent(parsed.Get("part"))
+	case "response.reasoning_summary_part.done":
+		return parsed.Get("part.type").String() == "summary_text" &&
+			contentPartHasFirstTokenContent(parsed.Get("part"))
 	case "response.function_call_arguments.done":
 		return stringFieldHasValue(parsed, "arguments")
+	case "response.custom_tool_call_input.done":
+		return stringFieldHasValue(parsed, "input")
+	case "response.reasoning_summary_text.done", "response.reasoning_text.done":
+		return stringFieldHasValue(parsed, "text")
 	}
-	if strings.Contains(eventType, ".delta") {
+	switch eventType {
+	case "response.output_text.delta",
+		"response.reasoning_summary_text.delta",
+		"response.reasoning_text.delta",
+		"response.reasoning.encrypted_content.delta",
+		"response.function_call_arguments.delta",
+		"response.custom_tool_call_input.delta",
+		"response.mcp_call_arguments.delta":
 		return deltaEventHasContent(parsed)
 	}
 	if eventType == "response.image_generation_call.partial_image" {
 		return stringFieldHasValue(parsed, "partial_image_b64") ||
 			stringFieldHasValue(parsed, "partial_image")
 	}
-	if strings.HasPrefix(eventType, "response.output_text") {
-		return stringFieldHasValue(parsed, "text") ||
-			stringFieldHasValue(parsed, "delta") ||
-			isFirstTokenEvent(eventType)
-	}
-	return isFirstTokenEvent(eventType)
+	return false
 }
 
-// isLooseFirstTokenResult 是首字统计的唯一口径（宽松首字）：response.created /
-// in_progress 之外的首个非终态响应事件即记为首字，结构帧也算。严格判定
-// isFirstTokenResult 仍用于断流重试的 contentTokenSeen 等内容感知逻辑。
+// isLooseFirstTokenResult 是响应已开始的宽松进度口径：response.created /
+// in_progress 之外的首个非终态响应事件即记为进度，结构帧也算。需要统计上游
+// 首个内容到达时间时，应使用 isFirstTokenResult。
 func isLooseFirstTokenResult(parsed gjson.Result) bool {
 	eventType := strings.TrimSpace(parsed.Get("type").String())
 	if eventType == "" || isPreContentLifecycleEvent(eventType) {
@@ -157,4 +167,12 @@ func contentPartHasFirstTokenContent(part gjson.Result) bool {
 func stringFieldHasValue(result gjson.Result, path string) bool {
 	field := result.Get(path)
 	return field.Exists() && len(field.String()) > 0
+}
+
+// recordFirstContentTime records upstream content arrival independently of progress
+// frames used by timeout/retry handling. Zero means no content has arrived.
+func recordFirstContentTime(parsed gjson.Result, start time.Time, firstTokenMs *int) {
+	if *firstTokenMs == 0 && isFirstTokenResult(parsed) {
+		*firstTokenMs = max(int(time.Since(start).Milliseconds()), 1)
+	}
 }
