@@ -11,6 +11,10 @@ import (
 // 与管理页单页上限一致:再大就是全池刷新,那两条额外 GROUP BY 不应再跑。
 const accountRequestCountBreakdownMaxIDs = 500
 
+// accountRecentTokenRateSampleLimit bounds the recent tail used by the
+// account-list throughput indicator.
+const accountRecentTokenRateSampleLimit = 20
+
 // appendAccountIDFilter 生成 account_id 的匹配子句并把绑定值追加进 args。
 // PostgreSQL 走单个数组参数 `= ANY($n)`:几万账号的全池统计刷新若逐个展开
 // 占位符,解析/规划开销随池规模线性放大,且触及扩展协议 65535 个参数的硬上限
@@ -290,6 +294,64 @@ func (db *DB) GetAccountModelCountsSinceByIDs(ctx context.Context, ids []int64, 
 			result[accountID] = make(map[string]AccountModelCount)
 		}
 		result[accountID][model] = count
+	}
+	return result, rows.Err()
+}
+
+// AccountRecentTokenRate is the weighted output throughput of recent
+// successful requests. First-token latency is excluded when it is valid.
+type AccountRecentTokenRate struct {
+	AccountID       int64
+	OutputTokens    int64
+	GenerationMS    int64
+	Samples         int64
+	TokensPerSecond float64
+}
+
+// GetAccountRecentTokenRatesByIDs returns the last 20 valid requests per
+// account, aggregated as total output tokens divided by total generation time.
+func (db *DB) GetAccountRecentTokenRatesByIDs(ctx context.Context, ids []int64) (map[int64]*AccountRecentTokenRate, error) {
+	result := make(map[int64]*AccountRecentTokenRate, len(ids))
+	ids = positiveUniqueIDs(ids)
+	if len(ids) == 0 {
+		return result, nil
+	}
+	args := make([]interface{}, 0, 1)
+	idFilter := db.appendAccountIDFilter(&args, ids)
+	generationMS := `CASE WHEN duration_ms > 0 AND first_token_ms > 0 AND first_token_ms < duration_ms AND duration_ms - first_token_ms >= 20 THEN duration_ms - first_token_ms WHEN duration_ms >= 20 THEN duration_ms ELSE 0 END`
+	query := fmt.Sprintf(`WITH eligible AS (
+		SELECT id, account_id, created_at, COALESCE(NULLIF(output_tokens, 0), completion_tokens) AS output_tokens,
+			%s AS generation_ms
+		FROM usage_logs
+		WHERE status_code < 400 AND %s AND %s AND %s
+			AND %s AND COALESCE(NULLIF(output_tokens, 0), completion_tokens) > 0
+	), ranked AS (
+		SELECT account_id, output_tokens, generation_ms,
+			ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY created_at DESC, id DESC) AS sample_rank
+		FROM eligible
+		WHERE generation_ms > 0
+	), recent AS (
+		SELECT account_id, SUM(output_tokens) AS output_tokens, SUM(generation_ms) AS generation_ms, COUNT(*) AS samples
+		FROM ranked
+		WHERE sample_rank <= %d AND generation_ms > 0
+		GROUP BY account_id
+	)
+	SELECT account_id, output_tokens, generation_ms, samples FROM recent`, generationMS,
+		db.nonRetryUsageLogPredicate(), db.currentAccountUsageGenerationPredicate(), db.endUserUsageLogPredicate(), idFilter, accountRecentTokenRateSampleLimit)
+	rows, err := db.conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		value := &AccountRecentTokenRate{}
+		if err := rows.Scan(&value.AccountID, &value.OutputTokens, &value.GenerationMS, &value.Samples); err != nil {
+			return nil, err
+		}
+		if value.GenerationMS > 0 {
+			value.TokensPerSecond = float64(value.OutputTokens) * 1000 / float64(value.GenerationMS)
+		}
+		result[value.AccountID] = value
 	}
 	return result, rows.Err()
 }

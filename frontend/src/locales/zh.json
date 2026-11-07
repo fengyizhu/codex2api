@@ -1155,6 +1155,8 @@
     "todayModelTooltipAria": "今日 {{count}} 次请求。悬停查看模型分布",
     "todayStats": "今日统计",
     "todayStatsHint": "今日(0 点起)经由本网关的请求数、Token 与成本。点击按今日请求数排序，相同请求数再比 Token 和成本。",
+    "recentTokensPerSec": "最近速率",
+    "recentTokensPerSecHint": "最近 {{count}} 次成功请求的加权输出速率",
     "largePoolSortDisabled": "后台正在聚合查询中，请稍后再试",
     "todayNoUsage": "无使用",
     "todayReqUnit": "次",

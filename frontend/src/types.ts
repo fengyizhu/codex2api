@@ -503,6 +503,9 @@ export interface AccountRow {
   occupied_requests?: number
   session_slot_buffer_enabled?: boolean
   total_requests?: number
+  /** 最近成功请求的加权输出吞吐,单位 tok/s。 */
+  recent_output_tokens_per_sec?: number
+  recent_output_tokens_samples?: number
   last_used_at?: ISODateString
   success_requests?: number
   error_requests?: number

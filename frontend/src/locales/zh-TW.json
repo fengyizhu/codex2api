@@ -382,6 +382,8 @@
     "tokenRefreshNotice": "授權續期提示",
     "todayStats": "今日統計",
     "todayStatsHint": "今日(0 點起)經由本閘道的請求數、Token 與成本",
+    "recentTokensPerSec": "最近速率",
+    "recentTokensPerSecHint": "最近 {{count}} 次成功請求的加權輸出速率",
     "largePoolSortDisabled": "後台正在聚合查詢中，請稍後再試",
     "todayNoUsage": "無使用",
     "todayReqUnit": "次",

@@ -90,6 +90,7 @@ import { SUBSCRIPTION_FILTER_OPTIONS } from "../types";
 import { getErrorMessage } from "../utils/error";
 import { formatRelativeTime, formatBeijingTime } from "../utils/time";
 import { buildBatchMetadataUpdate } from "../lib/accountBatchUpdate";
+import { formatTokensPerSec } from "../lib/usageTiming";
 import {
   autoPauseThresholdPercentToRatio as percentThresholdInputToRatio,
   formatAutoPauseThresholdPercent as formatQuotaAutoPausePercentInput,
@@ -14749,9 +14750,25 @@ function UsageWindowStat({
 // 字段缺失说明 stats 还没到(加载中/失败),显示占位而不是 0。
 function TodayStatsCell({ account }: { account: AccountRow }) {
   const { t } = useTranslation();
+  const recentRate = account.recent_output_tokens_per_sec;
+  const recentSamples = account.recent_output_tokens_samples ?? 0;
+  const recentRateLabel =
+    typeof recentRate === "number" && Number.isFinite(recentRate) && recentRate > 0
+      ? `${formatTokensPerSec(recentRate)} tok/s`
+      : null;
   const detail = account.usage_today_detail;
   if (!detail) {
-    return <span className="text-[12px] font-mono text-muted-foreground/40">-</span>;
+    return recentRateLabel ? (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:text-violet-300"
+        title={t("accounts.recentTokensPerSecHint", { count: recentSamples })}
+      >
+        <Zap className="size-3 shrink-0 text-violet-500" aria-hidden />
+        {recentRateLabel}
+      </span>
+    ) : (
+      <span className="text-[12px] font-mono text-muted-foreground/40">-</span>
+    );
   }
   const requests = detail.requests ?? 0;
   const tokens = detail.tokens ?? 0;
@@ -14759,13 +14776,15 @@ function TodayStatsCell({ account }: { account: AccountRow }) {
     typeof detail.account_billed === "number" ? detail.account_billed : 0;
   const userBilled =
     typeof detail.user_billed === "number" ? detail.user_billed : 0;
-
   const tooltip = [
     `${t("accounts.todayStats")}:`,
     `Requests: ${requests.toLocaleString()} req`,
     `Tokens: ${tokens.toLocaleString()} tok`,
     `${t("accounts.accountBilledLabel")}: $${accountBilled.toFixed(4)}`,
     userBilled > 0 ? `${t("accounts.userBilledLabel")}: $${userBilled.toFixed(4)}` : "",
+    recentRateLabel
+      ? `${t("accounts.recentTokensPerSec")}: ${recentRateLabel} (${t("accounts.recentTokensPerSecHint", { count: recentSamples })})`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -14824,6 +14843,16 @@ function TodayStatsCell({ account }: { account: AccountRow }) {
           <span className="text-[11px] font-normal text-muted-foreground/60">tok</span>
         </span>
       </div>
+
+      {recentRateLabel && (
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:text-violet-300"
+          title={t("accounts.recentTokensPerSecHint", { count: recentSamples })}
+        >
+          <Zap className="size-3 shrink-0 text-violet-500" aria-hidden />
+          {recentRateLabel}
+        </span>
+      )}
 
       <div className="flex items-center gap-1.5 text-[11px]">
         {accountBilled > 0 ? (

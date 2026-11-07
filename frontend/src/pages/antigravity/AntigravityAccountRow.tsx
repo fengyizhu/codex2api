@@ -30,6 +30,7 @@ import RequestCountPills from "../../components/RequestCountPills";
 import StatusBadge from "../../components/StatusBadge";
 import type { ProxyBindingContext } from "../../lib/accountProxyBinding";
 import { getAccountStatusBadgeStatus } from "../../lib/usageFormat";
+import { formatTokensPerSec } from "../../lib/usageTiming";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -149,8 +150,26 @@ function ModelCooldownChip({ account }: { account: AccountRow }) {
 
 function TodayStatsCell({ account }: { account: AccountRow }) {
   const { t } = useTranslation();
+  const recentRate = account.recent_output_tokens_per_sec;
+  const recentSamples = account.recent_output_tokens_samples ?? 0;
+  const recentRateLabel =
+    typeof recentRate === "number" && Number.isFinite(recentRate) && recentRate > 0
+      ? `${formatTokensPerSec(recentRate)} tok/s`
+      : null;
   const detail = account.usage_today_detail;
-  if (!detail) return <span className="font-mono text-[12px] text-muted-foreground/40">-</span>;
+  if (!detail) {
+    return recentRateLabel ? (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:text-violet-300"
+        title={t("accounts.recentTokensPerSecHint", { count: recentSamples })}
+      >
+        <Zap className="size-3 shrink-0 text-violet-500" aria-hidden />
+        {recentRateLabel}
+      </span>
+    ) : (
+      <span className="font-mono text-[12px] text-muted-foreground/40">-</span>
+    );
+  }
   const requests = detail.requests ?? 0;
   const tokens = detail.tokens ?? 0;
   const billed = typeof detail.account_billed === "number" ? detail.account_billed : 0;
@@ -159,6 +178,9 @@ function TodayStatsCell({ account }: { account: AccountRow }) {
     `Requests: ${requests.toLocaleString()} req`,
     `Tokens: ${tokens.toLocaleString()} tok`,
     `${t("accounts.accountBilledLabel")}: $${billed.toFixed(4)}`,
+    recentRateLabel
+      ? `${t("accounts.recentTokensPerSec")}: ${recentRateLabel} (${t("accounts.recentTokensPerSecHint", { count: recentSamples })})`
+      : "",
   ].join("\n");
   return (
     <div className="flex flex-col items-start gap-1 whitespace-nowrap text-[12px] tabular-nums" title={tooltip}>
@@ -174,6 +196,15 @@ function TodayStatsCell({ account }: { account: AccountRow }) {
           <span className="text-[11px] font-normal text-muted-foreground/60">{t("accounts.usageTokUnit")}</span>
         </span>
       </div>
+      {recentRateLabel ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:text-violet-300"
+          title={t("accounts.recentTokensPerSecHint", { count: recentSamples })}
+        >
+          <Zap className="size-3 shrink-0 text-violet-500" aria-hidden />
+          {recentRateLabel}
+        </span>
+      ) : null}
       {billed > 0 ? (
         <span
           className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium tabular-nums text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-400"

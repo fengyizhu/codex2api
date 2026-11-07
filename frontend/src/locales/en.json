@@ -1157,6 +1157,8 @@
     "todayModelTooltipAria": "Today {{count}} requests. Hover for model breakdown",
     "todayStats": "Today",
     "todayStatsHint": "Requests, tokens and cost through this gateway since midnight (server time). Click to sort by today's requests, then tokens and cost.",
+    "recentTokensPerSec": "Recent rate",
+    "recentTokensPerSecHint": "Weighted output rate over the last {{count}} successful requests",
     "largePoolSortDisabled": "Background aggregation is still running, please try again later",
     "todayNoUsage": "No usage",
     "todayReqUnit": "req",

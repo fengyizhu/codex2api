@@ -1801,6 +1801,8 @@ type accountResponse struct {
 	OccupiedRequests              int64                       `json:"occupied_requests"`
 	SessionSlotBufferEnabled      bool                        `json:"session_slot_buffer_enabled"`
 	TotalRequests                 int64                       `json:"total_requests"`
+	RecentOutputTokensPerSec      *float64                    `json:"recent_output_tokens_per_sec,omitempty"`
+	RecentOutputTokensSamples     int64                       `json:"recent_output_tokens_samples,omitempty"`
 	LastUsedAt                    string                      `json:"last_used_at"`
 	SuccessRequests               int64                       `json:"success_requests"`
 	ErrorRequests                 int64                       `json:"error_requests"`
@@ -2001,6 +2003,7 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 	var reqCounts map[int64]*database.AccountRequestCount
 	var usage5h, usage7d map[int64]*database.AccountTimeRangeUsage
 	var requestCountsPending bool
+	var recentTokenRates map[int64]*database.AccountRecentTokenRate
 	if view == "page" {
 		pageIDs := make([]int64, 0, len(rows))
 		for _, row := range rows {
@@ -2012,22 +2015,41 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 		reqCounts, requestCountsPending = h.pageRequestCounts(channel, pageIDs)
 		usage5h = make(map[int64]*database.AccountTimeRangeUsage)
 		usage7d = make(map[int64]*database.AccountTimeRangeUsage)
+		recentTokenRates, err = h.db.GetAccountRecentTokenRatesByIDs(ctx, pageIDs)
+		if err != nil {
+			log.Printf("获取当前页账号最近 Token 速率失败: %v", err)
+			recentTokenRates = make(map[int64]*database.AccountRecentTokenRate)
+		}
 	} else {
 		// 旧全量接口保持原行为和缓存语义。
 		reqCounts = h.getCachedRequestCounts()
 		usage5h, usage7d = h.getAccountUsageWindows(ctx)
+		allIDs := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			allIDs = append(allIDs, row.ID)
+		}
+		recentTokenRates, err = h.db.GetAccountRecentTokenRatesByIDs(ctx, allIDs)
+		if err != nil {
+			log.Printf("获取账号最近 Token 速率失败: %v", err)
+			recentTokenRates = make(map[int64]*database.AccountRecentTokenRate)
+		}
 	}
 
 	accounts := make([]accountResponse, 0, len(rows))
 	for _, row := range rows {
-		accounts = append(accounts, h.buildAccountResponse(
+		response := h.buildAccountResponse(
 			row,
 			accountMap[row.ID],
 			reqCounts[row.ID],
 			usage5h[row.ID],
 			usage7d[row.ID],
 			view != "page",
-		))
+		)
+		if rate := recentTokenRates[row.ID]; rate != nil && rate.TokensPerSecond > 0 {
+			response.RecentOutputTokensPerSec = &rate.TokensPerSecond
+			response.RecentOutputTokensSamples = rate.Samples
+		}
+		accounts = append(accounts, response)
 	}
 
 	if view != "page" {
@@ -2117,6 +2139,11 @@ func (h *Handler) GetAccount(c *gin.Context) {
 		log.Printf("获取账号 %d 请求统计失败: %v", id, err)
 		requestCounts = make(map[int64]*database.AccountRequestCount)
 	}
+	recentTokenRates, err := h.db.GetAccountRecentTokenRatesByIDs(ctx, []int64{id})
+	if err != nil {
+		log.Printf("获取账号 %d 最近 Token 速率失败: %v", id, err)
+		recentTokenRates = make(map[int64]*database.AccountRecentTokenRate)
+	}
 	now := time.Now()
 	usage5h, usage7d, err := h.db.GetAccountUsageWindowsByIDs(ctx, []int64{id}, now.Add(-5*time.Hour), now.AddDate(0, 0, -7))
 	if err != nil {
@@ -2131,6 +2158,10 @@ func (h *Handler) GetAccount(c *gin.Context) {
 	}
 	runtimeAccount := h.store.FindByID(id)
 	resp := h.buildAccountResponse(row, runtimeAccount, requestCounts[id], usage5h[id], usage7d[id], true)
+	if rate := recentTokenRates[id]; rate != nil && rate.TokensPerSecond > 0 {
+		resp.RecentOutputTokensPerSec = &rate.TokensPerSecond
+		resp.RecentOutputTokensSamples = rate.Samples
+	}
 	if runtimeAccount != nil {
 		if resetAt := runtimeAccount.GetReset5hAt(); !resetAt.IsZero() {
 			if billed, billedErr := h.db.GetAccountBilledSince(ctx, id, resetAt.Add(-5*time.Hour)); billedErr == nil {
