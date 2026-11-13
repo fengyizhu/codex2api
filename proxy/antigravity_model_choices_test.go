@@ -84,6 +84,26 @@ func TestAntigravityModelChoicesKeepUnrelatedModels(t *testing.T) {
 	}
 }
 
+func TestAntigravityGemini4ChoicesExposeThreeLevelsWithHighDefault(t *testing.T) {
+	for _, family := range []string{"gemini-4-carbon", "gemini-4-hydrogen"} {
+		models := make([]api.Model, 0, 3)
+		for _, level := range []string{"low", "medium", "high"} {
+			models = append(models, api.Model{ID: family + "-" + level, OwnedBy: "google"})
+		}
+		choices := collapseAntigravityModelChoices(models)
+		if len(choices) != 1 || choices[0].ID != family || choices[0].DefaultReasoningLevel != "high" {
+			t.Fatalf("%s choices = %+v", family, choices)
+		}
+		var got []string
+		for _, level := range choices[0].SupportedReasoningLevels {
+			got = append(got, level.Effort)
+		}
+		if !reflect.DeepEqual(got, []string{"low", "medium", "high"}) {
+			t.Fatalf("%s levels = %v", family, got)
+		}
+	}
+}
+
 func TestAntigravityPublishedChoicesExcludeInternalAndDuplicateBackings(t *testing.T) {
 	raw := []string{"chat_20706", "chat_23310", "tab_flash_lite_preview", "tab_jump_flash_lite_preview", "gemini-3.6-flash-tiered", "gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-high", "gemini-3.8-flash-tiered", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash-thinking", "gemini-Future-V4", "gemini-2.5-pro"}
 	var records []api.Model

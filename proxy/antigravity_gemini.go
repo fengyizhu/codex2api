@@ -157,7 +157,7 @@ func geminiNativeToAntigravityEnvelope(rawBody []byte, project, model string) ([
 	antigravityNormalizeGeminiContentRoles(request)
 	antigravitySanitizeNativeGeminiTools(request, nameMap)
 	antigravityRewriteNativeGeminiFunctionNames(request, nameMap)
-	wireModel := antigravityGeminiResolvedModel(model, nil)
+	wireModel := antigravityGeminiResolvedModel(model, antigravityNativeGeminiReasoning(request))
 	antigravityApplyNativeGeminiThinkingConfig(request, model, wireModel)
 	antigravityNormalizeNativeGeminiResponseSchema(request)
 	antigravitySanitizeNativeGeminiThoughtSignatures(request, wireModel)
@@ -179,6 +179,31 @@ func geminiNativeToAntigravityEnvelope(rawBody []byte, project, model string) ([
 		return nil, "", nil, err
 	}
 	return payload, wireModel, reverseNameMap, nil
+}
+
+// antigravityNativeGeminiReasoning extracts the native Gemini thinking level
+// before the public model is folded to its Antigravity backing ID. Carbon and
+// Hydrogen expose one backing per level, so a base-model request with an
+// explicit thinkingConfig must select the matching backing first.
+func antigravityNativeGeminiReasoning(request map[string]any) map[string]any {
+	for _, key := range []string{"generationConfig", "generation_config"} {
+		config, ok := request[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, thinkingKey := range []string{"thinkingConfig", "thinking_config"} {
+			thinking, ok := config[thinkingKey].(map[string]any)
+			if !ok {
+				continue
+			}
+			for _, levelKey := range []string{"thinkingLevel", "thinking_level"} {
+				if level, ok := thinking[levelKey].(string); ok && strings.TrimSpace(level) != "" {
+					return map[string]any{"effort": strings.ToLower(strings.TrimSpace(level))}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func antigravityApplyNativeGeminiThinkingConfig(request map[string]any, publicModel, wireModel string) {

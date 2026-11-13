@@ -125,6 +125,8 @@ func TestAntigravityFoldBareLogicalModelUsesModelDefaultTier(t *testing.T) {
 		"gemini-3.6-flash":  "gemini-3.6-flash-medium",
 		"gemini-3.8-flash":  "gemini-3.8-flash-low",
 		"gemini-3.1-pro":    "gemini-3.1-pro-high",
+		"gemini-4-carbon":   "gemini-4-carbon-high",
+		"gemini-4-hydrogen": "gemini-4-hydrogen-high",
 		"claude-opus-5-5":   "claude-opus-5-5-high",
 		"claude-sonnet-5-5": "claude-sonnet-5-5-high",
 	} {
@@ -144,6 +146,16 @@ func TestAntigravityFoldBareLogicalModelUsesModelDefaultTier(t *testing.T) {
 	maxEffort := []byte(`{"model":"claude-sonnet-5-5","reasoning":{"effort":"max"},"input":"hi"}`)
 	if _, mapped, apiErr := antigravityFoldLogicalModel(maxEffort, "claude-sonnet-5-5"); apiErr != nil || mapped != "claude-sonnet-5-5-max" {
 		t.Fatalf("max effort fold = %q err=%v", mapped, apiErr)
+	}
+	for _, family := range []string{"gemini-4-carbon", "gemini-4-hydrogen"} {
+		for _, effort := range []string{"low", "medium", "high"} {
+			body := []byte(`{"model":"` + family + `","reasoning":{"effort":"` + effort + `"},"input":"hi"}`)
+			_, mapped, apiErr := antigravityFoldLogicalModel(body, family)
+			want := family + "-" + effort
+			if apiErr != nil || mapped != want {
+				t.Fatalf("%s effort %s folded to %q err=%v, want %s", family, effort, mapped, apiErr, want)
+			}
+		}
 	}
 }
 

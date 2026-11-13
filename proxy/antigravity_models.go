@@ -58,6 +58,12 @@ var antigravityPublicModelCatalog = []antigravityPublicModelDefinition{
 	{id: "gemini-4-argon-low", wireModel: "gemini-4-argon-high", variants: []antigravityReasoningVariant{{level: "low", wireModel: "gemini-4-argon-high"}}},
 	{id: "gemini-4-argon-medium", wireModel: "gemini-4-argon-high", variants: []antigravityReasoningVariant{{level: "medium", wireModel: "gemini-4-argon-high"}}},
 	{id: "gemini-4-argon-high", wireModel: "gemini-4-argon-high", variants: []antigravityReasoningVariant{{level: "high", wireModel: "gemini-4-argon-high"}}},
+	{id: "gemini-4-carbon-low", wireModel: "gemini-4-carbon-low", variants: []antigravityReasoningVariant{{level: "low", wireModel: "gemini-4-carbon-low"}}},
+	{id: "gemini-4-carbon-medium", wireModel: "gemini-4-carbon-medium", variants: []antigravityReasoningVariant{{level: "medium", wireModel: "gemini-4-carbon-medium"}}},
+	{id: "gemini-4-carbon-high", wireModel: "gemini-4-carbon-high", variants: []antigravityReasoningVariant{{level: "high", wireModel: "gemini-4-carbon-high"}}},
+	{id: "gemini-4-hydrogen-low", wireModel: "gemini-4-hydrogen-low", variants: []antigravityReasoningVariant{{level: "low", wireModel: "gemini-4-hydrogen-low"}}},
+	{id: "gemini-4-hydrogen-medium", wireModel: "gemini-4-hydrogen-medium", variants: []antigravityReasoningVariant{{level: "medium", wireModel: "gemini-4-hydrogen-medium"}}},
+	{id: "gemini-4-hydrogen-high", wireModel: "gemini-4-hydrogen-high", variants: []antigravityReasoningVariant{{level: "high", wireModel: "gemini-4-hydrogen-high"}}},
 	{id: "gemini-3.1-pro-low", wireModel: "gemini-3.1-pro-low", variants: []antigravityReasoningVariant{{level: "low", wireModel: "gemini-3.1-pro-low", thinkingBudget: 1001}}},
 	{id: "gemini-3.1-pro-high", wireModel: "gemini-pro-agent", variants: []antigravityReasoningVariant{{level: "high", wireModel: "gemini-pro-agent", thinkingBudget: 10001}}},
 	// Claude 5.5 encodes effort in the model ID; each tier is its own backing and
@@ -97,6 +103,16 @@ var antigravityLogicalCompatibilityCatalog = []antigravityPublicModelDefinition{
 		{level: "low", wireModel: "gemini-4-argon-high"},
 		{level: "medium", wireModel: "gemini-4-argon-high"},
 		{level: "high", wireModel: "gemini-4-argon-high"},
+	}},
+	{id: "gemini-4-carbon", defaultReasoningLevel: "high", variants: []antigravityReasoningVariant{
+		{level: "low", wireModel: "gemini-4-carbon-low"},
+		{level: "medium", wireModel: "gemini-4-carbon-medium"},
+		{level: "high", wireModel: "gemini-4-carbon-high"},
+	}},
+	{id: "gemini-4-hydrogen", defaultReasoningLevel: "high", variants: []antigravityReasoningVariant{
+		{level: "low", wireModel: "gemini-4-hydrogen-low"},
+		{level: "medium", wireModel: "gemini-4-hydrogen-medium"},
+		{level: "high", wireModel: "gemini-4-hydrogen-high"},
 	}},
 	{id: "gemini-3.1-pro", defaultReasoningLevel: "high", variants: []antigravityReasoningVariant{
 		{level: "low", wireModel: "gemini-3.1-pro-low", thinkingBudget: 1001},
